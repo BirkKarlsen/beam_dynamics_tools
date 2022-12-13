@@ -162,3 +162,10 @@ def sort_acquisitons(filenames):
     return filenames
 
 
+def find_file_in_folder(f, fdir):
+    file_name = None
+    for file in os.listdir(fdir):
+        if file.startswith(f):
+            file_name = file
+
+    return file_name
