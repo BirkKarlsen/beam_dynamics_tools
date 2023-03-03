@@ -51,3 +51,20 @@ def generate_bunch_spacing(N_bunches, bunch_spacing, ps_batch_length, ps_batch_s
                 Delta_t += ps_batch_spacing
 
     return bunch_positions
+
+
+def generate_beam_ID(beam_type, number_bunches, ps_batch_length, intensity, bunchlength, voltage_200, voltage_800):
+    r'''
+    Generates a standard format for the ID of a generated beam in the SPS.
+
+    :param beam_type: type of beam, e.g. BCMS or 8b4e
+    :param number_bunches: total number of bunches in the batch
+    :param ps_batch_length: number of bunches in the batches injected from the PS
+    :param intensity: average bunch intensity
+    :param bunchlength: average bunch length
+    :param voltage_200: total RF voltage of the 200 MHz system
+    :param voltage_800: total RF voltage of the 800 MHz system as a fraction of the 200 MHz system
+    :return: the beam ID in form of a string
+    '''
+    return f'{beam_type}_{number_bunches}b_{ps_batch_length}pslen_{intensity * 1e3:.0f}e8_' \
+    f'{bunchlength * 1e3:.0f}ps_{voltage_200 * 1e3:.0f}kV_{voltage_800 * 100:.0f}percent'
