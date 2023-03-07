@@ -7,6 +7,7 @@ Author: Birk Emil Karlsen-Bæck
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import os
 
 import beam_profiles.bunch_profile_tools as bpt
 import data_visualisation.plot_profiles as ppr
@@ -59,7 +60,7 @@ class LHCDiagnostics(object):
         # Setting up arrays on initial track call
         if self.turn == 0:
             self.time_turns = np.linspace(0,
-                                          (self.tracker.rf_params.n_turns - 1) * self.tracker.rf_params.T_rev[0],
+                                          (self.tracker.rf_params.n_turns - 1) * self.tracker.rf_params.t_rev[0],
                                           self.n_cont)
 
             self.max_power = np.zeros(self.n_cont)
@@ -68,43 +69,52 @@ class LHCDiagnostics(object):
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
             self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices))
 
+            if not os.path.isdir(self.save_to + 'figures/'):
+                os.mkdir(self.save_to + 'figures/')
+
+            if not os.path.isdir(self.save_to + 'data/'):
+                os.mkdir(self.save_to + 'data/')
+
         # Gather signals which are frequently sampled
-        if self.turn % self.dt_cont == 0:
+        if self.turn % self.dt_cont == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
 
             bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
-                                                    heighFactor=1000)
+                                                    heighFactor=1000, wind_len=5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
 
             self.ind_cont += 1
 
         # Gather beam based measurements, save plots and save data
-        if self.turn % self.dt_beam == 0:
+        if self.turn % self.dt_beam == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
             # Plots
-            ppr.plot_profile(self.profile, self.turn, self.save_to)
-            ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to)
-            ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to)
+            ppr.plot_profile(self.profile, self.turn, self.save_to + 'figures/')
+            ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
+            ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
 
             # Save
-            np.save(self.save_to + 'beam_profiles.npy', self.beam_profile)
-            np.save(self.save_to + 'bunch_lengths.npy', self.bunch_lengths)
-            np.save(self.save_to + 'bunch_positions.npy', self.bunch_positions)
+            np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
+            np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
+            np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
 
         # Gather cavity based measurements, save plots and save data
-        if self.turn % self.dt_cl == 0:
+        if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
             # Plot
-            pcs.plot_generator_power(self.cl, self.turn, self.save_to)
-            pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to)
-            pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to)
+            pcs.plot_generator_power(self.cl, self.turn, self.save_to + 'figures/')
+            pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to + 'figures/')
+            pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
 
             # Save
-            np.save(self.save_to + f'gen_power_{self.turn}.npy', self.cl.generator_power()[-self.cl.n_coarse:])
-            np.save(self.save_to + f'ant_volt_{self.turn}.npy', self.cl.V_ANT[-self.cl.n_coarse:])
+            np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
+                    self.cl.generator_power()[-self.cl.n_coarse:])
+            np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
+                    self.cl.V_ANT[-self.cl.n_coarse:])
 
         plt.clf()
+        plt.cla()
 
 
 class SPSDiagnostics(object):

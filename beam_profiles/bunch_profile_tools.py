@@ -7,13 +7,14 @@ Author: Birk Emil Karlsen-Bæck
 import numpy as np
 import h5py
 from scipy.interpolate import interp1d
+from scipy.signal import find_peaks
+import os
 
 from blond_common.fitting.profile import binomial_amplitudeN_fit, FitOptions
 from blond_common.interfaces.beam.analytic_distribution import binomialAmplitudeN
 
 from beam_profiles.cable_transfer_function import apply_cable_tf
 from signal_analysis.measured_signals import fit_sin
-from data_visualisation.plot_profiles import plot_cavity
 
 
 def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_max=3564,
@@ -116,7 +117,7 @@ def extract_bunch_position(time, profile, heighFactor=0.015, wind_len=10):
     N_bunches, Bunch_positions, Bunch_peaks, Bunch_lengths, Bunch_intensities, Bunch_positionsFit, \
     Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit = getBeamPattern(time, np.array([profile]).T,
                                                                      heightFactor=heighFactor, wind_len=wind_len)
-    return Bunch_positionsFit[0, 0], Bunch_lengths[0, 0]
+    return Bunch_positionsFit[0, :], Bunch_lengths[0, :]
 
 
 def bunch_position_from_COM(time, profile):
@@ -280,9 +281,6 @@ def analyze_profiles_cavity_by_cavity(V, QL, cavitiesB1, cavitiesB2, emittance, 
         init_bl[i, 0] = blen_i[0]
         final_bl[i, 0] = np.mean(blen_i[-fbl_mean:])
 
-        if plt_cav1 is not None and cavitiesB1[i] in plt_cav1:
-            plot_cavity(bpos_i, ti, blen_i, fit_dict_init, fit_dict_final, f'{cavitiesB1[i]}B1')
-
         # Beam 2
         if print_progress:
             print(f'Analyzing Cavity {cavitiesB1[i]}B2')
@@ -296,9 +294,6 @@ def analyze_profiles_cavity_by_cavity(V, QL, cavitiesB1, cavitiesB2, emittance, 
         freqs_final[i, 1] = fit_dict_final['freq']
         init_bl[i, 1] = blen_i[0]
         final_bl[i, 1] = np.mean(blen_i[-fbl_mean:])
-
-        if plt_cav2 is not None and cavitiesB2[i] in plt_cav2:
-            plot_cavity(bpos_i, ti, blen_i, fit_dict_init, fit_dict_final, f'{cavitiesB2[i]}B2')
 
     return freqs_init, freqs_final, init_bl, final_bl
 
@@ -325,9 +320,6 @@ def analyse_profiles_all_cavities(V, QL, emittance, fdir, T_rev, turn_constant, 
     init_bl[0] = np.max(blen_i[:1000])
     final_bl[0] = np.mean(blen_i[-fbl_mean:])
 
-    if plt1:
-        plot_cavity(bpos_i, ti, blen_i, fit_dict_init, fit_dict_final, f'B1 All, $V$ = {V} MV, $Q_L$ = {QL}k')
-
     # Beam 2
     B2_profiles, t = get_profile_data(B2_file, fdir)
 
@@ -338,9 +330,6 @@ def analyse_profiles_all_cavities(V, QL, emittance, fdir, T_rev, turn_constant, 
     freqs_final[1] = fit_dict_final['freq']
     init_bl[1] = np.max(blen_i[:1000])
     final_bl[1] = np.mean(blen_i[-fbl_mean:])
-
-    if plt2:
-        plot_cavity(bpos_i, ti, blen_i, fit_dict_init, fit_dict_final, f'B2 All, $V$ = {V} MV, $Q_L$ = {QL}k')
 
     return freqs_init, freqs_final, init_bl, final_bl
 
