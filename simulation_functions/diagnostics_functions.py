@@ -167,7 +167,7 @@ class LHCDiagnostics(object):
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
 
             bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
-                                                    heighFactor=1000, wind_len=5)
+                                                    heighFactor=1000, distance=500, wind_len=5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
 
@@ -280,7 +280,7 @@ class SPSDiagnostics(object):
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
 
             bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
-                                                            heighFactor=1000, wind_len=5)
+                                                    heighFactor=1000, distance=500, wind_len=5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
 
