@@ -8,6 +8,7 @@ import numpy as np
 import h5py
 from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
+from scipy.stats import linregress
 import os
 
 from blond_common.fitting.profile import binomial_amplitudeN_fit, FitOptions
@@ -119,6 +120,39 @@ def extract_bunch_position(time, profile, heighFactor=0.015, wind_len=10):
                                                                      heightFactor=heighFactor, wind_len=wind_len)
     return Bunch_positionsFit[0, :], Bunch_lengths[0, :]
 
+def extract_bunch_parameters(time, profile, heighFactor=0.015, wind_len=10, distance=500):
+    N_bunches, Bunch_positions, Bunch_peaks, Bunch_lengths, Bunch_intensities, Bunch_positionsFit, \
+    Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit = getBeamPattern(time, np.array([profile]).T,
+                                                                     heightFactor=heighFactor, wind_len=wind_len,
+                                                                     distance=distance)
+    return Bunch_positionsFit[0, :], Bunch_lengths[0, :], Bunch_intensities[0, :]
+
+
+def find_offset(pos):
+    r'''
+    Takes in an array of bunch positions and does a linear regression of them.
+    The bunch-by-bunch offset is then calculated by taking the difference between the two.
+    :param pos: numpy-array - Ordered list of bunch positions in time
+    :return: numpy-array of the bunch-by-bunch offset
+    '''
+    x = np.linspace(0, len(pos), len(pos))
+
+    sl, inter, pval, rval, err = linregress(x, pos)
+    fit_line = sl * x + inter
+
+    offset_fit = pos - fit_line
+    return offset_fit
+
+
+def bunch_by_bunch_spacing(positions, batch_len):
+    n_batch = len(positions) // batch_len
+    positions = positions.reshape((n_batch, batch_len))
+    spacings = np.zeros(positions.shape)
+
+    for i in range(spacings.shape[0]):
+        spacings[i, :] = find_offset(positions[i, :])
+
+    return spacings
 
 def bunch_position_from_COM(time, profile):
     M = np.trapz(profile, time)

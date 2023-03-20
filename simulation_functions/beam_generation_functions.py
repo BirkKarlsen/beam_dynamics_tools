@@ -21,7 +21,7 @@ def generate_bunch_spacing(N_bunches, bunch_spacing, ps_batch_length, ps_batch_s
             bunch_positions[j] = Delta_t
             counter_8b4e += 1
             if counter_8b4e == 8 and '8b4e' in beam_type:
-                Delta_t += 4 * bunch_spacing
+                Delta_t += 5 * bunch_spacing
                 counter_8b4e = 0
             else:
                 Delta_t += bunch_spacing
@@ -41,11 +41,12 @@ def generate_bunch_spacing(N_bunches, bunch_spacing, ps_batch_length, ps_batch_s
                 bunch_positions[l] = Delta_t
                 l += 1
                 counter_8b4e += 1
-                if counter_8b4e == 8 and '8b4e' in beam_type:
-                    Delta_t += 4 * bunch_spacing
-                    counter_8b4e = 0
-                else:
-                    Delta_t += bunch_spacing
+                if j != N_bunches_in_ps_batch - 1:
+                    if counter_8b4e == 8 and '8b4e' in beam_type:
+                        Delta_t += 5 * bunch_spacing
+                        counter_8b4e = 0
+                    else:
+                        Delta_t += bunch_spacing
 
             if k != N_ps_batches - 1:
                 Delta_t += ps_batch_spacing
