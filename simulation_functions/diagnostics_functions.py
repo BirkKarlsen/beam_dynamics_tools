@@ -164,10 +164,11 @@ class LHCDiagnostics(object):
         if self.turn % self.dt_cont == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
+            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
 
-            bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
-                                                    heighFactor=1000, distance=500, wind_len=5)
+            bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles *
+                                                            self.tracker.beam.ratio,
+                                                            heighFactor=1000, distance=500, wind_len=5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
 
@@ -279,8 +280,8 @@ class SPSDiagnostics(object):
         if self.turn % self.dt_cont == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
 
-            bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
-                                                    heighFactor=1000, distance=500, wind_len=5)
+            bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles,
+                                                            heighFactor=1000, distance=500, wind_len=5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
 
