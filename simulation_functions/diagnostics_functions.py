@@ -97,7 +97,7 @@ class LHCDiagnostics(object):
                 os.mkdir(self.save_to + 'data/')
 
         # Gather signals which are frequently sampled
-        if self.turn % self.dt_cont == 0 or self.tracker.rf_params.n_turns//self.dt_cont == self.ind_cont + 1:
+        if self.turn % self.dt_cont == 0:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
@@ -161,7 +161,7 @@ class LHCDiagnostics(object):
                 os.mkdir(self.save_to + 'data/')
 
         # Gather signals which are frequently sampled
-        if self.turn % self.dt_cont == 0 or sself.tracker.rf_params.n_turns//self.dt_cont == self.ind_cont + 1:
+        if self.turn % self.dt_cont == 0:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
@@ -277,7 +277,7 @@ class SPSDiagnostics(object):
                 os.mkdir(self.save_to + 'data/')
 
         # Gather signals which are frequently sampled
-        if self.turn % self.dt_cont == 0 or self.tracker.rf_params.n_turns//self.dt_cont == self.ind_cont + 1:
+        if self.turn % self.dt_cont == 0:
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles,
