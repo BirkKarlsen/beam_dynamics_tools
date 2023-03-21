@@ -24,6 +24,8 @@ class LHCDiagnostics(object):
                  n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000):
 
         self.turn = 0
+        self.turns_after_injection = 0
+        self.injection_number = 0
 
         self.tracker = RingAndRFTracker
         self.profile = Profile
@@ -88,7 +90,7 @@ class LHCDiagnostics(object):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices))
+            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices / 2))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -100,7 +102,7 @@ class LHCDiagnostics(object):
         if self.turn % self.dt_cont == 0:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
+            self.beam_profile[self.ind_cont, :] = elf.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
                                                     heighFactor=1000, wind_len=5)
@@ -149,10 +151,11 @@ class LHCDiagnostics(object):
                                           self.n_cont)
 
             self.max_power = np.zeros(self.n_cont)
+            self.power_transient = np.zeros((500, self.cl.n_coarse))
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices))
+            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices / 2))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -164,7 +167,7 @@ class LHCDiagnostics(object):
         if self.turn % self.dt_cont == 0:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
+            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles *
                                                             self.tracker.beam.ratio,
@@ -199,6 +202,17 @@ class LHCDiagnostics(object):
             np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
                     self.cl.V_ANT[-self.cl.n_coarse:])
 
+        if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
+            # Gather power transients during the first 500 turns after the three injections
+            self.power_transient[self.turns_after_injection, :] = self.cl.generator_power()[-self.cl.n_coarse:]
+            self.turns_after_injection += 1
+
+            # Save power transients after 500 turns
+            if self.turns_after_injection == 500:
+                np.save(self.save_to + 'data/' + f'power_transient_injection_{self.injection_number}.npy',
+                        self.power_transient)
+
+        # Close all figures for this turn
         plt.clf()
         plt.cla()
         plt.close()
@@ -208,11 +222,19 @@ class LHCDiagnostics(object):
             # 36b injection
             beam_ID = 'LHC_power_MD_BCMS_36b/'
             self.injection(beam_ID, bucket=12 * 10 + 200)
+            self.injection_number += 1
+            self.turns_after_injection = 0
+            self.power_transient = np.zeros((500, self.cl.n_coarse))
+            print(f'Injected 36 bunches in bucket {12 * 10 + 200}!')
 
         if self.turn == 10000:
             # 144b injection
             beam_ID = 'LHC_power_MD_BCMS_144b/'
             self.injection(beam_ID, bucket=12 * 10 + 200 + 36 * 10 + 200)
+            self.injection_number += 1
+            self.turns_after_injection = 0
+            self.power_transient = np.zeros((500, self.cl.n_coarse))
+            print(f'Injected 144 bunches in bucket {12 * 10 + 36 * 10 + 2 * 200}!')
 
 
 class SPSDiagnostics(object):
@@ -268,7 +290,7 @@ class SPSDiagnostics(object):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices))
+            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices / 2))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -278,7 +300,7 @@ class SPSDiagnostics(object):
 
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0:
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles
+            self.beam_profile[self.ind_cont, :] = elf.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles,
                                                             heighFactor=1000, distance=500, wind_len=5)
