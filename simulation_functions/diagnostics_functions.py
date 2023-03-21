@@ -90,7 +90,7 @@ class LHCDiagnostics(object):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices / 2))
+            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -102,7 +102,7 @@ class LHCDiagnostics(object):
         if self.turn % self.dt_cont == 0:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
-            self.beam_profile[self.ind_cont, :] = elf.profile.n_macroparticles[::2] * self.tracker.beam.ratio
+            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
                                                     heighFactor=1000, wind_len=5)
@@ -155,7 +155,7 @@ class LHCDiagnostics(object):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices / 2))
+            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -290,7 +290,7 @@ class SPSDiagnostics(object):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, self.profile.n_slices / 2))
+            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -300,7 +300,7 @@ class SPSDiagnostics(object):
 
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0:
-            self.beam_profile[self.ind_cont, :] = elf.profile.n_macroparticles[::2] * self.tracker.beam.ratio
+            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles,
                                                             heighFactor=1000, distance=500, wind_len=5)
