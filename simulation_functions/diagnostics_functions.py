@@ -73,6 +73,14 @@ class LHCDiagnostics(object):
 
         # Add macroparticles to beam class
         self.tracker.beam += injected_beam
+        self.tracker.beam.intensity = self.tracker.beam.ratio * self.tracker.beam.n_macroparticles
+
+
+    def measure_losses_from_profile(self):
+        r'''Measure losses by integrating profiles'''
+        # TODO: implement method
+        pass
+
 
     def empty_measurement(self):
         pass
@@ -221,20 +229,20 @@ class LHCDiagnostics(object):
         if self.turn == 3000:
             # 36b injection
             beam_ID = 'LHC_power_MD_BCMS_36b/'
-            self.injection(beam_ID, bucket=12 * 10 + 200)
+            self.injection(beam_ID, bucket=470)
             self.injection_number += 1
             self.turns_after_injection = 0
             self.power_transient = np.zeros((500, self.cl.n_coarse))
-            print(f'Injected 36 bunches in bucket {12 * 10 + 200}!')
+            print(f'Injected 36 bunches in bucket {470}!')
 
         if self.turn == 10000:
             # 144b injection
             beam_ID = 'LHC_power_MD_BCMS_144b/'
-            self.injection(beam_ID, bucket=12 * 10 + 200 + 36 * 10 + 200)
+            self.injection(beam_ID, bucket=1890)
             self.injection_number += 1
             self.turns_after_injection = 0
             self.power_transient = np.zeros((500, self.cl.n_coarse))
-            print(f'Injected 144 bunches in bucket {12 * 10 + 36 * 10 + 2 * 200}!')
+            print(f'Injected 144 bunches in bucket {1180}!')
 
 
 class SPSDiagnostics(object):

@@ -284,6 +284,21 @@ def analyze_profile(profile, t, T_rev, turn_constant, init_osc_length, final_osc
     return fit_dict_init, fit_dict_final, bpos, Bunch_lengths[:, 0], t
 
 
+def analyze_profile_htf(profile, t, T_rev, T_s, N_T_s, turn_constant, mode='fwhm', wind_len=4, beam=1):
+    N_bunches, Bunch_positions, Bunch_peaks, Bunch_lengths, Bunch_intensities, Bunch_positionsFit, \
+    Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit = getBeamPattern(t, profile, heightFactor=30,
+                                                                     wind_len=wind_len, fit_option=mode,
+                                                                     plot_fit=True, beam=beam)
+
+    bpos = Bunch_positionsFit[:, 0]
+    t = np.linspace(0, len(bpos) - 1, len(bpos)) * T_rev * turn_constant
+    N_turns = N_T_s * int(round(T_s / (T_rev * turn_constant)))
+    bpos_extracted = bpos[:N_turns] - np.mean(bpos[:N_turns])
+    error = np.max(np.abs(bpos_extracted))
+    fit_dict = fit_sin(t[:N_turns], bpos[:N_turns] - np.mean(bpos[:N_turns]))
+
+    return fit_dict, bpos, Bunch_lengths[:, 0], t, error
+
 
 def analyze_profiles_cavity_by_cavity(V, QL, cavitiesB1, cavitiesB2, emittance, fdir, T_rev, turn_constant,
                                       init_osc_length, final_osc_start, add='', plt_cav1=None, plt_cav2=None,
