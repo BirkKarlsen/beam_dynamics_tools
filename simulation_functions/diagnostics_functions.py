@@ -76,14 +76,9 @@ class LHCDiagnostics(object):
         self.tracker.beam.intensity = self.tracker.beam.ratio * self.tracker.beam.n_macroparticles
 
 
-    def measure_losses_from_profile(self):
-        r'''Measure losses by integrating profiles'''
-        # TODO: implement method
-        pass
-
-
     def empty_measurement(self):
         pass
+
 
     def standard_measurement(self):
         r'''Default measurement rutine for LHC simulations.'''
@@ -99,6 +94,8 @@ class LHCDiagnostics(object):
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
             self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
+            self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
+            self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -112,10 +109,14 @@ class LHCDiagnostics(object):
 
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
-            bpos, blen = bpt.extract_bunch_position(self.profile.bin_centers, self.profile.n_macroparticles,
-                                                    heighFactor=1000, wind_len=5)
+            bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
+                                                            self.profile.n_macroparticles * self.tracker.beam.ratio,
+                                                            heighFactor=1000, wind_len=2.5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
+            self.bunch_intensities[self.ind_cont, :] = bint
+            self.bunch_losses[self.ind_cont, :] = self.bunch_intensities[0, :] - \
+                                                  self.bunch_intensities[self.ind_cont, :]
 
             self.ind_cont += 1
 
@@ -125,11 +126,15 @@ class LHCDiagnostics(object):
             ppr.plot_profile(self.profile, self.turn, self.save_to + 'figures/')
             ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
             ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
+            ppr.plot_total_losses(self.bunch_losses, self.time_turns,
+                                  self.ind_cont - 1, self.save_to + 'figures/')
 
             # Save
             np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
             np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
             np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
+            np.save(self.save_to + 'data/' + 'bunch_intensities.npy', self.bunch_intensities)
+
 
         # Gather cavity based measurements, save plots and save data
         if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
