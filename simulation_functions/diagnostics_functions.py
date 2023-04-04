@@ -111,7 +111,7 @@ class LHCDiagnostics(object):
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
                                                             self.profile.n_macroparticles * self.tracker.beam.ratio,
-                                                            heighFactor=1000, wind_len=2.5)
+                                                            heighFactor=1000 * self.tracker.beam.ratio, wind_len=2.5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
             self.bunch_intensities[self.ind_cont, :] = bint
@@ -184,7 +184,8 @@ class LHCDiagnostics(object):
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles *
                                                             self.tracker.beam.ratio,
-                                                            heighFactor=1000, distance=500, wind_len=5)
+                                                            heighFactor=1000 * self.tracker.beam.ratio,
+                                                            distance=500, wind_len=2.5)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
 
