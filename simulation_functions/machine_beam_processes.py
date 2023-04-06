@@ -81,3 +81,4 @@ def plot_momentum_program(momentum_program, momentum_cut, scale_data=1e-9):
     plt.plot(momentum_program * scale_data, c='black')
     plt.hlines(momentum_cut * scale_data, 0, len(momentum_program), colors='r')
     plt.xlim((0, len(momentum_program) - 1))
+    plt.grid()

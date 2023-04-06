@@ -132,12 +132,14 @@ def plot_bunch_position(bp, time, j, save_to, COM=False):
         fig.savefig(save_to + 'bunch_position.png')
 
 
-def plot_total_losses(bloss, time, j, save_to):
+def plot_total_losses(bloss, time, j, save_to, caploss=None):
     fig, ax = plt.subplots()
 
-    ax.plot(time[:j], np.sum(bloss, axis=1)[:j])
+    ax.plot(time[:j], np.sum(bloss, axis=1)[:j], c='black')
     ax.set_ylabel(r'Losses [Num. Protons]')
     ax.set_xlabel(r'Time since injection [s]')
+    if caploss is not None:
+        ax.hlines(caploss, 0, time[j], colors='r')
 
     fig.savefig(save_to + 'total_losses.png')
 

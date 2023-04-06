@@ -6,6 +6,7 @@ Author: Birk Emil Karlsen-Bæck
 
 import numpy as np
 import os
+import yaml
 
 def get_power_measurements_from_folder(folder_name, setting=None, profile=False):
     r'''Function to get all power measurements with given properties.
@@ -169,3 +170,23 @@ def find_file_in_folder(f, fdir):
             file_name = file
 
     return file_name
+
+
+def make_and_write_yaml(fname, fdir, content_dict):
+    if not os.path.isfile(fdir + fname):
+        os.system(f'touch {fdir + fname}')
+
+    with open(fdir + fname, 'w') as file:
+        document = yaml.dump(content_dict, file)
+
+
+def write_to_yaml(fname, fdir, content_dict):
+    if not os.path.isfile(fdir + fname):
+        print('Error: File not found')
+    else:
+        with open(fdir + fname) as file:
+            existing_dict = yaml.full_load(file)
+
+        with open(fdir + fname, 'w') as file:
+            existing_dict.update(content_dict)
+            document = yaml.dump(existing_dict, file)

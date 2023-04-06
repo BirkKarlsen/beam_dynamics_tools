@@ -108,6 +108,12 @@ def synchrotron_frequency_off_center(V, phi_max, h=h, eta=eta1, q=q, beta=beta, 
     return np.pi * nu_s / (2 * T_rev * K)
 
 
+def rf_bucket_height(V, h=h, eta=eta1, q=q, beta=beta, E_s=E_s, phi_s=phi_s):
+    A = np.sqrt((2 * q * V * beta**2 * E_s)/(np.pi * h * np.abs(eta)))
+    B = np.sqrt(np.abs(-np.cos(phi_s) + 0.5 * (np.pi - 2 * phi_s) * np.sin(phi_s)))
+    return A * B
+
+
 def phase_offset_from_energy_offset(dE, V, h=h, eta=eta1, q=q, beta=beta, E_s=E_s):
     r'''Offset in phase corresponding to an offset in energy for a single RF system.
 

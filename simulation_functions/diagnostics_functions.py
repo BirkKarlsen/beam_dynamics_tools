@@ -14,13 +14,14 @@ import analytical_functions.longitudinal_beam_dynamics as lbd
 import beam_profiles.bunch_profile_tools as bpt
 import data_visualisation.plot_profiles as ppr
 import data_visualisation.plot_cavity_signals as pcs
+import data_management.importing_data as ida
 
 class LHCDiagnostics(object):
     r'''
     Object for diagnostics of both the beam and the RF system in simulations of the LHC.
     '''
 
-    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, save_to, get_from,
+    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
                  n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000):
 
         self.turn = 0
@@ -31,6 +32,7 @@ class LHCDiagnostics(object):
         self.profile = Profile
         self.induced_voltage = TotalInducedVoltage
         self.cl = LHCCavityLoop
+        self.ring = Ring
 
         self.save_to = save_to
         self.get_from = get_from
@@ -95,7 +97,13 @@ class LHCDiagnostics(object):
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
             self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
             self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
+
             self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
+            self.tracker.beam.losses_separatrix(self.ring, self.tracker.rf_params)
+            self.uncaptured_beam = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
+
+            loss_dict = {'Uncaptured losses': self.uncaptured_beam}
+            ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -127,13 +135,23 @@ class LHCDiagnostics(object):
             ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
             ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
             ppr.plot_total_losses(self.bunch_losses, self.time_turns,
-                                  self.ind_cont - 1, self.save_to + 'figures/')
+                                  self.ind_cont - 1, self.save_to + 'figures/',
+                                  caploss=self.uncaptured_beam)
 
             # Save
             np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
             np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
             np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
             np.save(self.save_to + 'data/' + 'bunch_intensities.npy', self.bunch_intensities)
+
+            if self.turn == self.tracker.rf_params.n_turns - 1:
+                bucket_height = lbd.rf_bucket_height(self.tracker.voltage[0, self.tracker.counter[0]],
+                                                     phi_s=self.tracker.phi_s[self.tracker.counter[0]])
+                self.tracker.beam.losses_below_energy(-bucket_height)
+                self.losses_from_cut = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
+
+                loss_dict = {'Losses after ramp': self.losses_from_cut}
+                ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
 
         # Gather cavity based measurements, save plots and save data
