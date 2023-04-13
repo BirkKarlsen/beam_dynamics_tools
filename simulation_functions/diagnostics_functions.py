@@ -85,6 +85,11 @@ class LHCDiagnostics(object):
     def standard_measurement(self):
         r'''Default measurement rutine for LHC simulations.'''
 
+        # Modify cuts of the Beam Profile
+        self.tracker.beam.statistics()
+        self.profile.cut_options.track_cuts(self.tracker.beam)
+        self.profile.set_slices_parameters()
+
         # Setting up arrays on initial track call
         if self.turn == 0:
             self.time_turns = np.linspace(0,
@@ -112,7 +117,7 @@ class LHCDiagnostics(object):
                 os.mkdir(self.save_to + 'data/')
 
         # Gather signals which are frequently sampled
-        if self.turn % self.dt_cont == 0:
+        if self.turn % self.dt_cont == 0 and self.ind_cont < self.n_cont:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
             self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
