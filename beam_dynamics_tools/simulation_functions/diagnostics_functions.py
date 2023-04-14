@@ -6,15 +6,15 @@ Author: Birk Emil Karlsen-Bæck
 
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 from scipy.constants import c
 
-import analytical_functions.longitudinal_beam_dynamics as lbd
-import beam_profiles.bunch_profile_tools as bpt
-import data_visualisation.plot_profiles as ppr
-import data_visualisation.plot_cavity_signals as pcs
-import data_management.importing_data as ida
+import beam_dynamics_tools.analytical_functions.longitudinal_beam_dynamics as lbd
+import beam_dynamics_tools.beam_profiles.bunch_profile_tools as bpt
+import beam_dynamics_tools.data_visualisation.plot_profiles as ppr
+import beam_dynamics_tools.data_visualisation.plot_cavity_signals as pcs
+import beam_dynamics_tools.data_management.importing_data as ida
+
 
 class LHCDiagnostics(object):
     r'''
@@ -52,7 +52,6 @@ class LHCDiagnostics(object):
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
 
-
     def track(self):
         r'''Track attribute to perform measurement setting.'''
         self.perform_measurements()
@@ -77,10 +76,8 @@ class LHCDiagnostics(object):
         self.tracker.beam += injected_beam
         self.tracker.beam.intensity = self.tracker.beam.ratio * self.tracker.beam.n_macroparticles
 
-
     def empty_measurement(self):
         pass
-
 
     def standard_measurement(self):
         r'''Default measurement rutine for LHC simulations.'''
@@ -305,16 +302,13 @@ class SPSDiagnostics(object):
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
 
-
     def track(self):
         r'''Track attribute to perform measurement setting.'''
         self.perform_measurements()
         self.turn += 1
 
-
     def empty_measurement(self):
         pass
-
 
     def standard_measurement(self):
         r'''Standard measurements done in SPS simulations.'''

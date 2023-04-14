@@ -7,6 +7,9 @@ Author: Birk Emil Karlsen-Bæck
 import numpy as np
 import os
 import yaml
+from scipy.interpolate import interp1d
+from tqdm import tqdm
+
 
 def get_power_measurements_from_folder(folder_name, setting=None, profile=False):
     r'''Function to get all power measurements with given properties.
@@ -172,7 +175,45 @@ def find_file_in_folder(f, fdir):
     return file_name
 
 
+def find_files_in_folder_starting_and_ending_with(fdir, prefix=None, suffix=None):
+    files = []
+    for file in os.listdir(fdir):
+        if suffix is None:
+            if file.startswith(prefix):
+                files.append(file)
+        elif prefix is None:
+            if file.endswith(suffix):
+                files.append(file)
+        else:
+            if file.startswith(prefix) and file.endswith(suffix):
+                files.append(file)
+
+    return files
+
+
+def remove_filetype_from_name(files, filetype=None):
+    new_files = []
+    if filetype is not None:
+        for i in range(len(files)):
+            new_files.append(files[i][:-len(filetype)])
+    else:
+        for i in range(len(files)):
+            ind = files[i].index('.', -4, -1)
+            new_files.append(files[i][:ind])
+
+    return new_files
+
+
+
 def make_and_write_yaml(fname, fdir, content_dict):
+    r'''
+    Makes a yaml-file called fname if there does not exist one. and then writes content_dict to that file.
+
+    :param fname: name of yaml-file
+    :param fdir: directory the yaml-file is in
+    :param content_dict: dictonary with contents for the yaml-file
+    '''
+
     if not os.path.isfile(fdir + fname):
         os.system(f'touch {fdir + fname}')
 
@@ -181,6 +222,14 @@ def make_and_write_yaml(fname, fdir, content_dict):
 
 
 def write_to_yaml(fname, fdir, content_dict):
+    r'''
+    Adds the contents of content_dict to the yaml-file called fname in directory fdir.
+
+    :param fname: name of yaml-file
+    :param fdir: directory the yaml-file is in
+    :param content_dict: dictonary with contents for the yaml-file
+    '''
+
     if not os.path.isfile(fdir + fname):
         print('Error: File not found')
     else:
@@ -190,3 +239,72 @@ def write_to_yaml(fname, fdir, content_dict):
         with open(fdir + fname, 'w') as file:
             existing_dict.update(content_dict)
             document = yaml.dump(existing_dict, file)
+
+
+def sort_sps_profiles(files):
+    acq_num = np.zeros(len(files))
+    for i in range(len(files)):
+        acq_num[i] = int(files[i][-3:])
+
+    i = 0
+    while i < len(files) - 1:
+        min_ind = i
+        j = i + 1
+
+        while j < len(files):
+            if acq_num[j] < acq_num[min_ind]:
+                min_ind = j
+
+            j += 1
+
+        acq_num[min_ind], acq_num[i] = acq_num[i], acq_num[min_ind]
+        files[min_ind], files[i] = files[i], files[min_ind]
+        i += 1
+
+    return files
+
+
+def import_sps_profiles(fdir, files, N_samples_per_file=9999900, prt=False):
+    r'''
+    Imports profile measurements in the SPS and corrects for gitter.
+
+    :param fdir: directory the acquisition files are in
+    :param files: the name of the acquisition files
+    :param N_samples_per_file: number of samples per file
+    :return: profile data, profile data with gitter correction
+    '''
+    profile_datas = np.zeros((len(files), N_samples_per_file))
+    profile_datas_corr = np.zeros((len(files), N_samples_per_file))
+    n = 0
+    if prt:
+        print(f'Fetching profiles...')
+
+    for f in tqdm(files, disable=not prt):
+        profile_datas[n,:] = np.load(fdir + f + '.npy')
+
+        conf_f = open(fdir + f + '.asc', 'r')
+        acq_params = conf_f.readlines()
+        conf_f.close()
+
+        delta_t = float(acq_params[6][39:-1])
+        frame_length = [int(s) for s in acq_params[7].split() if s.isdigit()][0]
+        N_frames = [int(s) for s in acq_params[8].split() if s.isdigit()][0]
+        trigger_offsets = np.zeros(N_frames, )
+        for line in np.arange(19, N_frames + 19):
+            trigger_offsets[line - 20] = float(acq_params[line][35:-2])
+
+        timeScale = np.arange(frame_length) * delta_t
+
+        # data = np.load(fullpath)
+        data = np.reshape(np.load(fdir + f + '.npy'), (N_frames, frame_length))
+        data_corr = np.zeros((N_frames, frame_length))
+
+        for i in range(N_frames):
+            x = timeScale + trigger_offsets[i]
+            A = interp1d(x, data[i, :], fill_value='extrapolate')
+            data_corr[i,:] = A(timeScale)
+
+        profile_datas_corr[n, :] = data_corr.flatten()
+        n += 1
+
+    return profile_datas, profile_datas_corr

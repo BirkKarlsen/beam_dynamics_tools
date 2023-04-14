@@ -14,8 +14,8 @@ import os
 from blond_common.fitting.profile import binomial_amplitudeN_fit, FitOptions
 from blond_common.interfaces.beam.analytic_distribution import binomialAmplitudeN
 
-from beam_profiles.cable_transfer_function import apply_cable_tf
-from signal_analysis.measured_signals import fit_sin
+from beam_dynamics_tools.beam_profiles.cable_transfer_function import apply_cable_tf
+from beam_dynamics_tools.signal_analysis.measured_signals import fit_sin
 
 
 def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_max=3564,
@@ -120,7 +120,18 @@ def extract_bunch_position(time, profile, heighFactor=0.015, wind_len=10):
                                                                      heightFactor=heighFactor, wind_len=wind_len)
     return Bunch_positionsFit[0, :], Bunch_lengths[0, :]
 
+
 def extract_bunch_parameters(time, profile, heighFactor=0.015, wind_len=10, distance=500):
+    r'''
+    Extraces the bunch positions, bunch lengths and bunch intensities from a given profile with a given time array.
+
+    :param time: time array for each measurement point
+    :param profile: beam line density
+    :param heighFactor: height factor to find bunch peaks
+    :param wind_len: length of bunch window
+    :param distance: minimum length between bunch peaks
+    :return: bunch positions, bunch lenghts, bunch intensities
+    '''
     N_bunches, Bunch_positions, Bunch_peaks, Bunch_lengths, Bunch_intensities, Bunch_positionsFit, \
     Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit = getBeamPattern(time, np.array([profile]).T,
                                                                      heightFactor=heighFactor, wind_len=wind_len,
@@ -153,6 +164,7 @@ def bunch_by_bunch_spacing(positions, batch_len):
         spacings[i, :] = find_offset(positions[i, :])
 
     return spacings
+
 
 def bunch_position_from_COM(time, profile):
     M = np.trapz(profile, time)

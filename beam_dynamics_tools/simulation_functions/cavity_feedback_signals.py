@@ -7,7 +7,6 @@ Author: Birk Emil Karlsen-Bæck
 import numpy as np
 import matplotlib.pyplot as plt
 
-import data_visualisation.make_plots_pretty
 
 def plot_one_cavity_signal(signal, signal_name, CavityLoop, real_and_imag=False):
     r'''Function to plot a single cavity signal in either real and imaginary or

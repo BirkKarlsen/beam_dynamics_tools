@@ -7,7 +7,6 @@ Author: Birk Emil Karlsen-Bæck
 import numpy as np
 import matplotlib.pyplot as plt
 
-import data_visualisation.make_plots_pretty
 
 # LHC Cavity Loop
 def plot_generator_power(LHCCavityLoop, turn, save_to):

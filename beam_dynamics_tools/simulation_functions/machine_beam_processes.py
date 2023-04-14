@@ -9,8 +9,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import bisect
 from scipy.interpolate import interp1d
 
-import data_visualisation.make_plots_pretty
-from general_functions.analysis_utilities import find_nearest
+from beam_dynamics_tools.general_functions.analysis_utilities import find_nearest
 
 from blond.input_parameters.ring_options import load_data, RingOptions
 

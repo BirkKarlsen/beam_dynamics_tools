@@ -8,8 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from beam_profiles.bunch_profile_tools import getBeamPattern
-import analytical_functions.longitudinal_beam_dynamics as lbd
+from beam_dynamics_tools.beam_profiles.bunch_profile_tools import getBeamPattern
+import beam_dynamics_tools.analytical_functions.longitudinal_beam_dynamics as lbd
 
 
 def plot_cavity(bpos, t, blen, i_fit, f_fit, cavID):
