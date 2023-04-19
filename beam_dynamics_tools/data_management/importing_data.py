@@ -241,6 +241,24 @@ def write_to_yaml(fname, fdir, content_dict):
             document = yaml.dump(existing_dict, file)
 
 
+def fetch_from_yaml(fname, fdir):
+    r'''
+    Retrieves the contents of a yaml-file with name fname in fdir.
+
+    :param fname: name of yaml-file
+    :param fdir: directory the yaml-file is in
+    :return: contents of the yaml-file
+    '''
+
+    if not os.path.isfile(fdir + fname):
+        print('Error: File not found')
+    else:
+        with open(fdir + fname) as file:
+            existing_dict = yaml.full_load(file)
+
+    return existing_dict
+
+
 def sort_sps_profiles(files):
     acq_num = np.zeros(len(files))
     for i in range(len(files)):
@@ -258,6 +276,37 @@ def sort_sps_profiles(files):
             j += 1
 
         acq_num[min_ind], acq_num[i] = acq_num[i], acq_num[min_ind]
+        files[min_ind], files[i] = files[i], files[min_ind]
+        i += 1
+
+    return files
+
+
+
+def sort_measurements(files, sort_by):
+    r'''
+    Sorts measurements by the output number given by the sort_by function.
+
+    :param files: filenames to sort
+    :param sort_by: function which determines what the files should be sorted after
+    :return: sorted list of filenames
+    '''
+    sorted_by = np.zeros(len(files))
+    for i in range(len(files)):
+        sorted_by[i] = sort_by(files[i])
+
+    i = 0
+    while i < len(files) - 1:
+        min_ind = i
+        j = i + 1
+
+        while j < len(files):
+            if sorted_by[j] < sorted_by[min_ind]:
+                min_ind = j
+
+            j += 1
+
+        sorted_by[min_ind], sorted_by[i] = sorted_by[i], sorted_by[min_ind]
         files[min_ind], files[i] = files[i], files[min_ind]
         i += 1
 
@@ -308,3 +357,48 @@ def import_sps_profiles(fdir, files, N_samples_per_file=9999900, prt=False):
         n += 1
 
     return profile_datas, profile_datas_corr
+
+
+def import_sps_cavity_signal_measurements(fdir, files, N_samples_per_file=9999900, prt=False):
+
+
+    volt_3sec = np.zeros((len(files), 4, N_samples_per_file), dtype=complex)
+    pow_3sec = np.zeros((len(files), 4, N_samples_per_file), dtype=complex)
+    volt_4sec = np.zeros((len(files), 2, N_samples_per_file), dtype=complex)
+    pow_4sec = np.zeros((len(files), 2, N_samples_per_file), dtype=complex)
+
+    if prt:
+        print(f'Fetching cavity signals...')
+
+    for i in tqdm(range(len(files)), disable=not prt):
+        data_i = np.loadtxt(fdir + files[i])
+
+        k = 0
+        l = 0
+        p3 = 0
+        p4 = 0
+        for j in range(0, data_i.shape[1], 2):
+            if k == 6:
+                p3 = 0
+                p4 = 0
+
+            if k < 6:
+                if l < 2:
+                    volt_3sec[i, p3, :] = data_i[:, j] * np.exp(1j * data_i[:, j + 1])
+                    p3 += 1
+                else:
+                    volt_4sec[i, p4, :] = data_i[:, j] * np.exp(1j * data_i[:, j + 1])
+                    p4 += 1
+                    l = 0
+            else:
+                if l < 3:
+                    pow_3sec[i, p3, :] = data_i[:, j] * np.exp(1j * data_i[:, j + 1])
+                    p3 += 1
+                else:
+                    pow_4sec[i, p4, :] = data_i[:, j] * np.exp(1j * data_i[:, j + 1])
+                    p4 += 1
+                    l = 0
+            k += 1
+            l += 1
+
+    return volt_3sec, volt_4sec, pow_3sec, pow_4sec

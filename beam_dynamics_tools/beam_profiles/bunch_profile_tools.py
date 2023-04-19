@@ -14,7 +14,7 @@ import os
 from blond_common.fitting.profile import binomial_amplitudeN_fit, FitOptions
 from blond_common.interfaces.beam.analytic_distribution import binomialAmplitudeN
 
-from beam_dynamics_tools.beam_profiles.cable_transfer_function import apply_cable_tf
+from beam_dynamics_tools.beam_profiles.cable_transfer_function import apply_lhc_cable_tf
 from beam_dynamics_tools.signal_analysis.measured_signals import fit_sin
 
 
@@ -50,7 +50,7 @@ def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_
                 y = y - baseline
 
             if apply_tf:
-                y, x = apply_cable_tf(y, x * 1e-9, beam)
+                y, x = apply_lhc_cable_tf(y, x * 1e-9, beam)
                 x *= 1e9
 
             if fit_option == 'fwhm':
@@ -475,16 +475,6 @@ def center_profiles(profiles, ts, pos=2.5e-9/2):
         bs = Bunch_positionsFit[i][0] * 1e-9
         f = interp1d(t_i - bs + pos, profile_i, fill_value=0, bounds_error=False)
         profiles[:, i] = f(t_i)
-
-    return profiles
-
-
-def set_profile_reference(profiles, new_reference=0, sample=25):
-    if profiles.ndim == 1:
-        profiles = profiles - np.mean(profiles[:sample]) + new_reference
-    else:
-        for i in range(profiles.shape[1]):
-            profiles[:, i] = profiles[:, i] - np.mean(profiles[:sample, i]) + new_reference
 
     return profiles
 

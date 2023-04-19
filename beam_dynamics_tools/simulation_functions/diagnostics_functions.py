@@ -16,22 +16,18 @@ import beam_dynamics_tools.data_visualisation.plot_cavity_signals as pcs
 import beam_dynamics_tools.data_management.importing_data as ida
 
 
-class LHCDiagnostics(object):
-    r'''
-    Object for diagnostics of both the beam and the RF system in simulations of the LHC.
-    '''
+class Diagnostics(object):
+    r'''Object for diagnostics of both the beam and the RF system in simulations.'''
 
-    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
-                 n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000):
+    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, CavityLoop, Ring, save_to, get_from,
+                 n_bunches, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500):
 
         self.turn = 0
-        self.turns_after_injection = 0
-        self.injection_number = 0
 
         self.tracker = RingAndRFTracker
         self.profile = Profile
         self.induced_voltage = TotalInducedVoltage
-        self.cl = LHCCavityLoop
+        self.cl = CavityLoop
         self.ring = Ring
 
         self.save_to = save_to
@@ -41,21 +37,54 @@ class LHCDiagnostics(object):
         # time interval between difference simulation measurements
         self.dt_cont = dt_cont
         self.ind_cont = 0
-        self.n_cont = int(self.tracker.rf_params.n_turns/self.dt_cont)
+        self.n_cont = int(self.tracker.rf_params.n_turns / self.dt_cont)
         self.dt_beam = dt_beam
         self.dt_cl = dt_cl
+        self.dt_prfl = dt_prfl
+
+        self.perform_measurements = getattr(self, 'empty_measurement')
+
+    def track(self):
+        r'''Track attribute to perform measurement setting.'''
+        self.reposition_profile_edges()
+        self.perform_measurements()
+        self.turn += 1
+
+    def reposition_profile_edges(self):
+        r'''Function to reposition profile cuts'''
+        if self.turn % self.dt_prfl == 0:
+            # Modify cuts of the Beam Profile
+            self.tracker.beam.statistics()
+            self.profile.cut_options.track_cuts(self.tracker.beam)
+            self.profile.set_slices_parameters()
+
+    def empty_measurement(self):
+        r'''Dummy measurement for simulations not needing output.'''
+        pass
+
+
+class LHCDiagnostics(Diagnostics):
+    r'''
+    Object for diagnostics of both the beam and the RF system in simulations of the LHC.
+    '''
+
+    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
+                 n_bunches, injection_scheme, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500):
+
+        super().__init__(RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
+                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl)
+
+        self.turns_after_injection = 0
+        self.injection_number = 0
+        self.injection_scheme = injection_scheme
+        self.injection_keys = list(injection_scheme.keys())
 
         if setting == 0:
             self.perform_measurements = getattr(self, 'standard_measurement')
         elif setting == 1:
-            self.perform_measurements = getattr(self, 'lhc_2022_power_md')
+            self.perform_measurements = getattr(self, 'measurement_with_injection')
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
-
-    def track(self):
-        r'''Track attribute to perform measurement setting.'''
-        self.perform_measurements()
-        self.turn += 1
 
     def injection(self, beam_ID, bucket):
         r'''Injection of beam from the SPS into the LHC.'''
@@ -75,17 +104,11 @@ class LHCDiagnostics(object):
         # Add macroparticles to beam class
         self.tracker.beam += injected_beam
         self.tracker.beam.intensity = self.tracker.beam.ratio * self.tracker.beam.n_macroparticles
-
-    def empty_measurement(self):
-        pass
+        self.turns_after_injection = 0
+        self.injection_number += 1
 
     def standard_measurement(self):
         r'''Default measurement rutine for LHC simulations.'''
-
-        # Modify cuts of the Beam Profile
-        self.tracker.beam.statistics()
-        self.profile.cut_options.track_cuts(self.tracker.beam)
-        self.profile.set_slices_parameters()
 
         # Setting up arrays on initial track call
         if self.turn == 0:
@@ -94,6 +117,7 @@ class LHCDiagnostics(object):
                                           self.n_cont)
 
             self.max_power = np.zeros(self.n_cont)
+            self.power_transient = np.zeros((500, self.cl.n_coarse))
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
@@ -169,13 +193,23 @@ class LHCDiagnostics(object):
             np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
                     self.cl.V_ANT[-self.cl.n_coarse:])
 
+        if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
+            # Gather power transients during the first 500 turns after the three injections
+            self.power_transient[self.turns_after_injection, :] = self.cl.generator_power()[-self.cl.n_coarse:]
+            self.turns_after_injection += 1
+
+            # Save power transients after 500 turns
+            if self.turns_after_injection == 500:
+                np.save(self.save_to + 'data/' + f'power_transient_injection_{self.injection_number}.npy',
+                        self.power_transient)
+                self.power_transient = np.zeros((500, self.cl.n_coarse))
+
         plt.clf()
         plt.cla()
         plt.close()
 
-    def lhc_2022_power_md(self):
-        r'''Injection of beams and measurements done that are similar to the LHC RF MD on power performed
-        during November 2022.'''
+    def measurement_with_injection(self):
+        r'''Injection of beams and measurements.'''
 
         # Setting up arrays on initial track call
         if self.turn == 0:
@@ -245,6 +279,7 @@ class LHCDiagnostics(object):
             if self.turns_after_injection == 500:
                 np.save(self.save_to + 'data/' + f'power_transient_injection_{self.injection_number}.npy',
                         self.power_transient)
+                self.power_transient = np.zeros((500, self.cl.n_coarse))
 
         # Close all figures for this turn
         plt.clf()
@@ -252,63 +287,29 @@ class LHCDiagnostics(object):
         plt.close()
 
         # Injection of different beams into the LHC.
-        if self.turn == 3000:
+        if self.turn == self.injection_scheme[self.injection_keys[self.injection_number]][1]:
             # 36b injection
-            beam_ID = 'LHC_power_MD_BCMS_36b/'
-            self.injection(beam_ID, bucket=470)
-            self.injection_number += 1
-            self.turns_after_injection = 0
-            self.power_transient = np.zeros((500, self.cl.n_coarse))
-            print(f'Injected 36 bunches in bucket {470}!')
-
-        if self.turn == 10000:
-            # 144b injection
-            beam_ID = 'LHC_power_MD_BCMS_144b/'
-            self.injection(beam_ID, bucket=1890)
-            self.injection_number += 1
-            self.turns_after_injection = 0
-            self.power_transient = np.zeros((500, self.cl.n_coarse))
-            print(f'Injected 144 bunches in bucket {1180}!')
+            beam_ID = self.injection_keys[self.injection_number] + '/'
+            bucket = self.injection_scheme[self.injection_keys[self.injection_number]][0]
+            self.injection(beam_ID, bucket=bucket)
+            print(f'Injected {beam_ID} in bucket {bucket}!')
 
 
-class SPSDiagnostics(object):
+class SPSDiagnostics(Diagnostics):
     r'''
     Object for diagnostics of both the beam and the RF system in simulations of the SPS.
     '''
 
-    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, SPSCavityFeedback, save_to, get_from,
-                 n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000):
+    def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, SPSCavityFeedback, Ring, save_to, get_from,
+                 n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500):
 
-        self.turn = 0
-
-        self.tracker = RingAndRFTracker
-        self.profile = Profile
-        self.induced_voltage = TotalInducedVoltage
-        self.cl = SPSCavityFeedback
-
-        self.save_to = save_to
-        self.get_from = get_from
-        self.n_bunches = n_bunches
-
-        # time interval between difference simulation measurements
-        self.dt_cont = dt_cont
-        self.ind_cont = 0
-        self.n_cont = int(self.tracker.rf_params.n_turns / self.dt_cont)
-        self.dt_beam = dt_beam
-        self.dt_cl = dt_cl
+        super().__init__(RingAndRFTracker, Profile, TotalInducedVoltage, SPSCavityFeedback, Ring, save_to, get_from,
+                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl)
 
         if setting == 0:
             self.perform_measurements = getattr(self, 'standard_measurement')
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
-
-    def track(self):
-        r'''Track attribute to perform measurement setting.'''
-        self.perform_measurements()
-        self.turn += 1
-
-    def empty_measurement(self):
-        pass
 
     def standard_measurement(self):
         r'''Standard measurements done in SPS simulations.'''

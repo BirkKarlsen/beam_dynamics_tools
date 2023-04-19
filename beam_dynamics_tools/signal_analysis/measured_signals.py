@@ -7,6 +7,7 @@ Author: Birk Emil Karlsen-Bæck
 import numpy as np
 import scipy
 import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
 
 def reshape_buffer_data(data, n_points):
     turns = len(data)//n_points
@@ -16,6 +17,21 @@ def reshape_buffer_data(data, n_points):
         rdata[:, i] = data[n_points * i: n_points * (i + 1)]
 
     return rdata
+
+
+def reshape_to_turn_by_turn(data, t, t_rev):
+    n_complete_turns = int(t[-1] / t_rev)
+    sample_period = t[1] - t[0]
+    n_samples_per_turn = int(t_rev / sample_period)
+    data_interped = interp1d(t, data)
+
+    reshaped_data = np.zeros((n_complete_turns, n_samples_per_turn))
+    t_turn = np.linspace(0, (n_samples_per_turn - 1) * sample_period, n_samples_per_turn)
+
+    for i in range(n_complete_turns):
+        reshaped_data[i, :] = data_interped(i * t_rev + t_turn)
+
+    return reshaped_data
 
 
 def fit_sin(tt, yy):
