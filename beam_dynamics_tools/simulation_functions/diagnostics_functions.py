@@ -86,11 +86,14 @@ class LHCDiagnostics(Diagnostics):
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
 
-    def injection(self, beam_ID, bucket):
+    def injection(self, beam_ID, bucket, simulated):
         r'''Injection of beam from the SPS into the LHC.'''
 
         # import beam
-        injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'simulated_beam.npy')
+        if simulated:
+            injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'simulated_beam.npy')
+        else:
+            injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'generated_beam.npy')
 
         # place beam in the correct RF bucket
         sps_lhc_dt = (((2 * np.pi * lbd.R_SPS)/(lbd.h_SPS * c * lbd.beta)) -
@@ -291,7 +294,8 @@ class LHCDiagnostics(Diagnostics):
             # 36b injection
             beam_ID = self.injection_keys[self.injection_number] + '/'
             bucket = self.injection_scheme[self.injection_keys[self.injection_number]][0]
-            self.injection(beam_ID, bucket=bucket)
+            simulated = bool(self.injection_scheme[self.injection_keys[self.injection_number]][2])
+            self.injection(beam_ID, bucket=bucket, simulated=simulated)
             print(f'Injected {beam_ID} in bucket {bucket}!')
 
 

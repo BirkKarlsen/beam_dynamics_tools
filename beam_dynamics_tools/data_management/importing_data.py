@@ -256,7 +256,7 @@ def fetch_from_yaml(fname, fdir):
         with open(fdir + fname) as file:
             existing_dict = yaml.full_load(file)
 
-    return existing_dict
+        return existing_dict
 
 
 def sort_sps_profiles(files):
