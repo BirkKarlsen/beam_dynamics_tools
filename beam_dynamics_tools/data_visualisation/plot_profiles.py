@@ -149,7 +149,7 @@ def plot_total_losses(bloss, time, j, save_to, caploss=None, beam_structure=None
     if beam_structure is None:
         ax.plot(time[:j], np.sum(bloss, axis=1)[:j], c='black')
     else:
-        bunches = np.zeros(1, dtype=int)
+        bunches = np.zeros(1, dtype=int) - 1
         cmap = plt.get_cmap('plasma', len(beam_structure))
         for inj in range(len(beam_structure)):
             bunches = bunches[-1] + 1 + np.arange(beam_structure[inj], dtype=int)

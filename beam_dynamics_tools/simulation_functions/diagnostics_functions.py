@@ -20,7 +20,7 @@ class Diagnostics(object):
     r'''Object for diagnostics of both the beam and the RF system in simulations.'''
 
     def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, CavityLoop, Ring, save_to, get_from,
-                 n_bunches, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500):
+                 n_bunches, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500, dt_ld=25):
 
         self.turn = 0
 
@@ -41,6 +41,10 @@ class Diagnostics(object):
         self.dt_beam = dt_beam
         self.dt_cl = dt_cl
         self.dt_prfl = dt_prfl
+
+        self.dt_ld = dt_ld
+        self.ind_ld = 0
+        self.n_ld = int(self.tracker.rf_params.n_turns / self.dt_ld)
 
         self.perform_measurements = getattr(self, 'empty_measurement')
 
@@ -69,10 +73,11 @@ class LHCDiagnostics(Diagnostics):
     '''
 
     def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
-                 n_bunches, injection_scheme, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500):
+                 n_bunches, injection_scheme, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500,
+                 dt_ld=25):
 
         super().__init__(RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
-                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl)
+                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl, dt_ld=dt_ld)
 
         self.turns_after_injection = 0
         self.injection_number = 0
@@ -172,7 +177,6 @@ class LHCDiagnostics(Diagnostics):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
             self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
 
             self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
@@ -181,17 +185,23 @@ class LHCDiagnostics(Diagnostics):
             loss_dict = {'Uncaptured losses': self.uncaptured_beam}
             ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
+            self.beam_profile = np.zeros((self.n_ld, len(self.profile.n_macroparticles)))
+
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
 
             if not os.path.isdir(self.save_to + 'data/'):
                 os.mkdir(self.save_to + 'data/')
 
+        # Line density measurement
+        if self.turn % self.dt_ld == 0 and self.ind_ld < self.n_ld:
+            self.beam_profile[self.ind_ld, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
+
+            self.ind_ld += 1
+
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0 and self.ind_cont < self.n_cont:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
-
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
                                                             self.profile.n_macroparticles * self.tracker.beam.ratio,
@@ -259,6 +269,7 @@ class LHCDiagnostics(Diagnostics):
 
     def measurement_with_injection(self):
         r'''Injection of beams and measurements.'''
+
         # Injection of different beams into the LHC.
         if self.injection_number < len(self.injection_keys) and \
                 self.turn == self.injection_scheme[self.injection_keys[self.injection_number]][1]:
@@ -286,7 +297,6 @@ class LHCDiagnostics(Diagnostics):
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
             self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
 
             self.uncaptured_beam = self.measure_uncaptured_losses()
@@ -294,6 +304,7 @@ class LHCDiagnostics(Diagnostics):
             loss_dict = {f'Uncaptured losses {self.injection_number}': self.uncaptured_beam}
             ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
+            self.beam_profile = np.zeros((self.n_ld, len(self.profile.n_macroparticles)))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -301,11 +312,14 @@ class LHCDiagnostics(Diagnostics):
             if not os.path.isdir(self.save_to + 'data/'):
                 os.mkdir(self.save_to + 'data/')
 
+        # Line density measurement
+        if self.turn % self.dt_ld == 0 and self.ind_ld < self.n_ld:
+            self.beam_profile[self.ind_ld, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
+            self.ind_ld += 1
+
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0:
             self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
-
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles *
                                                             self.tracker.beam.ratio,
@@ -378,10 +392,10 @@ class SPSDiagnostics(Diagnostics):
     '''
 
     def __init__(self, RingAndRFTracker, Profile, TotalInducedVoltage, SPSCavityFeedback, Ring, save_to, get_from,
-                 n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500):
+                 n_bunches, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500, dt_ld=25):
 
         super().__init__(RingAndRFTracker, Profile, TotalInducedVoltage, SPSCavityFeedback, Ring, save_to, get_from,
-                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl)
+                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl, dt_ld=dt_ld)
 
         if setting == 0:
             self.perform_measurements = getattr(self, 'standard_measurement')
@@ -401,7 +415,8 @@ class SPSDiagnostics(Diagnostics):
 
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
+
+            self.beam_profile = np.zeros((self.n_ld, len(self.profile.n_macroparticles)))
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -409,9 +424,13 @@ class SPSDiagnostics(Diagnostics):
             if not os.path.isdir(self.save_to + 'data/'):
                 os.mkdir(self.save_to + 'data/')
 
+        # Line density measurement
+        if self.turn % self.dt_ld == 0:
+            self.beam_profile[self.ind_ld, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
+            self.ind_ld += 1
+
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0:
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles,
                                                             heighFactor=1000, distance=500, wind_len=5)
@@ -449,7 +468,7 @@ class SPSDiagnostics(Diagnostics):
             # Arrays for profile tracking
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
+            self.beam_profile = np.zeros((self.n_ld, len(self.profile.n_macroparticles)))
             self.phase_offset = np.zeros((self.n_cont, self.n_bunches))
 
             # Arrays for FF+OTFB tracking
@@ -464,10 +483,14 @@ class SPSDiagnostics(Diagnostics):
             if not os.path.isdir(self.save_to + 'data/'):
                 os.mkdir(self.save_to + 'data/')
 
+        # Line density measurement
+        if self.turn % self.dt_ld == 0:
+            self.beam_profile[self.ind_ld, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
+            self.ind_ld += 1
+
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0:
             # Beam related analysis
-            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
                                                             self.profile.n_macroparticles,
