@@ -78,6 +78,14 @@ class LHCDiagnostics(Diagnostics):
         self.injection_number = 0
         self.injection_scheme = injection_scheme
         self.injection_keys = list(injection_scheme.keys())
+        self.beam_structure = np.zeros(len(self.injection_keys) + 1, dtype=int)
+
+        self.beam_structure[0] = self.n_bunches
+        inj = 1
+        for injection, inj_data in self.injection_scheme.items():
+            self.n_bunches += int(inj_data[3])
+            self.beam_structure[inj] = int(inj_data[3])
+            inj += 1
 
         if setting == 0:
             self.perform_measurements = getattr(self, 'standard_measurement')
@@ -110,6 +118,46 @@ class LHCDiagnostics(Diagnostics):
         self.turns_after_injection = 0
         self.injection_number += 1
 
+        # Modify cuts of the Beam Profile
+        self.tracker.beam.statistics()
+        self.profile.cut_options.track_cuts(self.tracker.beam)
+        self.profile.set_slices_parameters()
+        self.profile.track()
+
+    def measure_uncaptured_losses(self):
+        r'''Method to measure uncaptured losses.'''
+
+        self.tracker.beam.losses_separatrix(self.ring, self.tracker.rf_params)
+        uncaptured_beam = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
+
+        return uncaptured_beam
+
+    def measure_slow_losses(self):
+        r'''Method to measure slow losses throughout the simulation.'''
+        bunch_losses = np.zeros(self.n_bunches)
+
+        bunches = np.arange(self.beam_structure[0])
+        bunch_losses[bunches] = self.bunch_intensities[0, bunches] \
+                                - self.bunch_intensities[self.ind_cont, bunches]
+
+        for inj in range(len(self.injection_keys)):
+            bunches = bunches[-1] + 1 + np.arange(self.beam_structure[inj + 1])
+            bunch_losses[bunches] = self.bunch_intensities[
+                                        self.injection_scheme[self.injection_keys[inj]][1] // self.dt_cont, bunches]\
+                                    - self.bunch_intensities[self.ind_cont, bunches]
+
+        return bunch_losses
+
+    def measure_ramp_losses(self):
+        r'''Method to measure losses at the end of a short ramp.'''
+
+        bucket_height = lbd.rf_bucket_height(self.tracker.voltage[0, self.tracker.counter[0]],
+                                             phi_s=self.tracker.phi_s[self.tracker.counter[0]])
+        self.tracker.beam.losses_below_energy(-bucket_height)
+        losses_from_cut = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
+
+        return losses_from_cut
+
     def standard_measurement(self):
         r'''Default measurement rutine for LHC simulations.'''
 
@@ -128,8 +176,7 @@ class LHCDiagnostics(Diagnostics):
             self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
 
             self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
-            self.tracker.beam.losses_separatrix(self.ring, self.tracker.rf_params)
-            self.uncaptured_beam = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
+            self.uncaptured_beam = self.measure_uncaptured_losses()
 
             loss_dict = {'Uncaptured losses': self.uncaptured_beam}
             ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
@@ -148,7 +195,8 @@ class LHCDiagnostics(Diagnostics):
 
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
                                                             self.profile.n_macroparticles * self.tracker.beam.ratio,
-                                                            heighFactor=1000 * self.tracker.beam.ratio, wind_len=2.5)
+                                                            heighFactor=1000 * self.tracker.beam.ratio, wind_len=2.5,
+                                                            n_bunches=self.n_bunches)
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
             self.bunch_intensities[self.ind_cont, :] = bint
@@ -172,13 +220,11 @@ class LHCDiagnostics(Diagnostics):
             np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
             np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
             np.save(self.save_to + 'data/' + 'bunch_intensities.npy', self.bunch_intensities)
+            np.save(self.save_to + 'data/' + 'bunch_losses.npy', self.bunch_losses)
 
             if self.turn == self.tracker.rf_params.n_turns - 1:
-                bucket_height = lbd.rf_bucket_height(self.tracker.voltage[0, self.tracker.counter[0]],
-                                                     phi_s=self.tracker.phi_s[self.tracker.counter[0]])
-                self.tracker.beam.losses_below_energy(-bucket_height)
-                self.losses_from_cut = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
 
+                self.losses_from_cut = self.measure_ramp_losses()
                 loss_dict = {'Losses after ramp': self.losses_from_cut}
                 ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
@@ -213,6 +259,18 @@ class LHCDiagnostics(Diagnostics):
 
     def measurement_with_injection(self):
         r'''Injection of beams and measurements.'''
+        # Injection of different beams into the LHC.
+        if self.injection_number < len(self.injection_keys) and \
+                self.turn == self.injection_scheme[self.injection_keys[self.injection_number]][1]:
+            beam_ID = self.injection_keys[self.injection_number] + '/'
+            bucket = self.injection_scheme[self.injection_keys[self.injection_number]][0]
+            simulated = bool(self.injection_scheme[self.injection_keys[self.injection_number]][2])
+            self.injection(beam_ID, bucket=bucket, simulated=simulated)
+            print(f'Injected {beam_ID} in bucket {bucket}!')
+
+            self.uncaptured_beam = self.measure_uncaptured_losses()
+            loss_dict = {f'Uncaptured losses {self.injection_number}': self.uncaptured_beam}
+            ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
         # Setting up arrays on initial track call
         if self.turn == 0:
@@ -223,9 +281,19 @@ class LHCDiagnostics(Diagnostics):
             self.max_power = np.zeros(self.n_cont)
             self.power_transient = np.zeros((500, self.cl.n_coarse))
 
+            print(f'Found {self.n_bunches} to be injected in total')
+
             self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
             self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
+            self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
             self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
+            self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
+
+            self.uncaptured_beam = self.measure_uncaptured_losses()
+
+            loss_dict = {f'Uncaptured losses {self.injection_number}': self.uncaptured_beam}
+            ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
+
 
             if not os.path.isdir(self.save_to + 'figures/'):
                 os.mkdir(self.save_to + 'figures/')
@@ -242,9 +310,13 @@ class LHCDiagnostics(Diagnostics):
             bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles *
                                                             self.tracker.beam.ratio,
                                                             heighFactor=1000 * self.tracker.beam.ratio,
-                                                            distance=500, wind_len=2.5)
+                                                            distance=500, wind_len=2.5,
+                                                            n_bunches=self.n_bunches)
+
             self.bunch_lengths[self.ind_cont, :] = blen
             self.bunch_positions[self.ind_cont, :] = bpos
+            self.bunch_intensities[self.ind_cont, :] = bint
+            self.bunch_losses[self.ind_cont, :] = self.measure_slow_losses()
 
             self.ind_cont += 1
 
@@ -254,11 +326,21 @@ class LHCDiagnostics(Diagnostics):
             ppr.plot_profile(self.profile, self.turn, self.save_to + 'figures/')
             ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
             ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
+            ppr.plot_total_losses(self.bunch_losses, self.time_turns,
+                                  self.ind_cont - 1, self.save_to + 'figures/',
+                                  caploss=self.uncaptured_beam, beam_structure=self.beam_structure)
 
             # Save
             np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
             np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
             np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
+            np.save(self.save_to + 'data/' + 'bunch_intensities.npy', self.bunch_intensities)
+            np.save(self.save_to + 'data/' + 'bunch_losses.npy', self.bunch_losses)
+
+            if self.turn == self.tracker.rf_params.n_turns - 1:
+                self.losses_from_cut = self.measure_ramp_losses()
+                loss_dict = {'Losses after ramp': self.losses_from_cut}
+                ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
         # Gather cavity based measurements, save plots and save data
         if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
@@ -289,15 +371,6 @@ class LHCDiagnostics(Diagnostics):
         plt.cla()
         plt.close()
 
-        # Injection of different beams into the LHC.
-        if self.turn == self.injection_scheme[self.injection_keys[self.injection_number]][1]:
-            # 36b injection
-            beam_ID = self.injection_keys[self.injection_number] + '/'
-            bucket = self.injection_scheme[self.injection_keys[self.injection_number]][0]
-            simulated = bool(self.injection_scheme[self.injection_keys[self.injection_number]][2])
-            self.injection(beam_ID, bucket=bucket, simulated=simulated)
-            print(f'Injected {beam_ID} in bucket {bucket}!')
-
 
 class SPSDiagnostics(Diagnostics):
     r'''
@@ -312,6 +385,8 @@ class SPSDiagnostics(Diagnostics):
 
         if setting == 0:
             self.perform_measurements = getattr(self, 'standard_measurement')
+        elif setting == 1:
+            self.perform_measurements = getattr(self, 'feedforward_measurement')
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
 
@@ -357,6 +432,94 @@ class SPSDiagnostics(Diagnostics):
             np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
             np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
             np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
+
+        plt.clf()
+        plt.cla()
+        plt.close()
+
+    def feedforward_measurement(self):
+        r'''Measurements for benchmarking the SPS FF.'''
+
+        # Setting up measurement arrays
+        if self.turn == 0:
+            self.time_turns = np.linspace(0,
+                                          (self.tracker.rf_params.n_turns - 1) * self.tracker.rf_params.t_rev[0],
+                                          self.n_cont)
+
+            # Arrays for profile tracking
+            self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
+            self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
+            self.beam_profile = np.zeros((self.n_cont, len(self.profile.n_macroparticles[::2])))
+            self.phase_offset = np.zeros((self.n_cont, self.n_bunches))
+
+            # Arrays for FF+OTFB tracking
+            self.vcav_4sec = np.zeros((self.n_cont, self.cl.OTFB_2.n_coarse), dtype=complex)
+            self.vcav_3sec = np.zeros((self.n_cont, self.cl.OTFB_1.n_coarse), dtype=complex)
+            self.power_4sec = np.zeros((self.n_cont, self.cl.OTFB_2.n_coarse), dtype=complex)
+            self.power_3sec = np.zeros((self.n_cont, self.cl.OTFB_1.n_coarse), dtype=complex)
+
+            if not os.path.isdir(self.save_to + 'figures/'):
+                os.mkdir(self.save_to + 'figures/')
+
+            if not os.path.isdir(self.save_to + 'data/'):
+                os.mkdir(self.save_to + 'data/')
+
+        # Gather signals which are frequently sampled
+        if self.turn % self.dt_cont == 0:
+            # Beam related analysis
+            self.beam_profile[self.ind_cont, :] = self.profile.n_macroparticles[::2] * self.tracker.beam.ratio
+
+            bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
+                                                            self.profile.n_macroparticles,
+                                                            heighFactor=1000, distance=500, wind_len=5)
+            self.bunch_lengths[self.ind_cont, :] = blen
+            self.bunch_positions[self.ind_cont, :] = bpos
+            batch_len, n_batches = bpt.find_batch_length(bpos, bunch_spacing=25)
+
+            self.phase_offset[self.ind_cont, :] = bpt.bunch_by_bunch_spacing(bpos, batch_len=batch_len).flatten()
+
+            # Analysis of control system
+            self.vcav_3sec[self.ind_cont, :] = self.cl.OTFB_1.V_ANT[-self.cl.OTFB_1.n_coarse:]
+            self.vcav_4sec[self.ind_cont, :] = self.cl.OTFB_2.V_ANT[-self.cl.OTFB_2.n_coarse:]
+            self.power_3sec[self.ind_cont, :] = self.cl.OTFB_1.calc_power()[-self.cl.OTFB_1.n_coarse:]
+            self.power_4sec[self.ind_cont, :] = self.cl.OTFB_2.calc_power()[-self.cl.OTFB_2.n_coarse:]
+
+            self.ind_cont += 1
+
+        # Gather beam based measurements, save plots and save data
+        if self.turn % self.dt_beam == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
+            # Plots
+            ppr.plot_profile(self.profile, self.turn, self.save_to + 'figures/')
+            ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1,
+                                  self.save_to + 'figures/')
+            ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1,
+                                    self.save_to + 'figures/')
+            ppr.plot_bunch_phase_offsets(self.phase_offset[self.ind_cont - 1, :], self.turn,
+                                         self.save_to + 'figures/')
+
+            # Save
+            np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
+            np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
+            np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
+            np.save(self.save_to + 'data/' + 'phase_offset.npy', self.phase_offset)
+
+        # Gather cavity based measurements, save plots and save data
+        if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
+            # Plot
+            pcs.plot_twc_generator_power(self.cl.OTFB_1, self.turn, self.save_to + 'figures/')
+            pcs.plot_twc_generator_power(self.cl.OTFB_2, self.turn, self.save_to + 'figures/')
+            pcs.plot_twc_gap_voltage(self.cl.OTFB_1, self.turn, self.save_to + 'figures/')
+            pcs.plot_twc_gap_voltage(self.cl.OTFB_2, self.turn, self.save_to + 'figures/')
+
+            # Save
+            np.save(self.save_to + 'data/' + f'ant_volt_3sec_{self.turn}.npy',
+                    self.vcav_3sec)
+            np.save(self.save_to + 'data/' + f'ant_volt_4sec_{self.turn}.npy',
+                    self.vcav_4sec)
+            np.save(self.save_to + 'data/' + f'gen_power_3sec_{self.turn}.npy',
+                    self.power_3sec)
+            np.save(self.save_to + 'data/' + f'gen_power_4sec_{self.turn}.npy',
+                    self.power_4sec)
 
         plt.clf()
         plt.cla()

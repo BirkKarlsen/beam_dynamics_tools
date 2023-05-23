@@ -121,9 +121,12 @@ def extract_bunch_position(time, profile, heighFactor=0.015, wind_len=10):
     return Bunch_positionsFit[0, :], Bunch_lengths[0, :]
 
 
-def extract_bunch_parameters(time, profile, heighFactor=0.015, wind_len=10, distance=500):
+def extract_bunch_parameters(time, profile, heighFactor=0.015, wind_len=10, distance=500, n_bunches=None):
     r'''
     Extraces the bunch positions, bunch lengths and bunch intensities from a given profile with a given time array.
+    If the expected number of bunches is passed then if the number of bunches found is less then the expected the
+    function will return zero-valued elements at the end. If the number found is more than the expected the
+    function will return the bunches with the highest intensities.
 
     :param time: time array for each measurement point
     :param profile: beam line density
@@ -136,7 +139,25 @@ def extract_bunch_parameters(time, profile, heighFactor=0.015, wind_len=10, dist
     Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit = getBeamPattern(time, np.array([profile]).T,
                                                                      heightFactor=heighFactor, wind_len=wind_len,
                                                                      distance=distance)
-    return Bunch_positionsFit[0, :], Bunch_lengths[0, :], Bunch_intensities[0, :]
+    if n_bunches is None:
+        return Bunch_positionsFit[0, :], Bunch_lengths[0, :], Bunch_intensities[0, :]
+    else:
+        if N_bunches[0] == n_bunches:
+            return Bunch_positionsFit[0, :], Bunch_lengths[0, :], Bunch_intensities[0, :]
+        elif N_bunches[0] < n_bunches:
+            db = n_bunches - N_bunches[0]
+            empty_bunches = np.zeros(db)
+
+            Bunch_positionsFit = np.concatenate((Bunch_positionsFit[0, :], empty_bunches))
+            Bunch_lengths = np.concatenate((Bunch_lengths[0, :], empty_bunches))
+            Bunch_intensities = np.concatenate((Bunch_intensities[0, :], empty_bunches))
+
+            return Bunch_positionsFit, Bunch_lengths, Bunch_intensities
+        else:
+            max_ind = np.argpartition(Bunch_intensities[0, :], -n_bunches)[-n_bunches:]
+            max_ind = np.sort(max_ind)
+
+            return Bunch_positionsFit[0, max_ind], Bunch_lengths[0, max_ind], Bunch_intensities[0, max_ind]
 
 
 def find_offset(pos):
@@ -165,6 +186,30 @@ def bunch_by_bunch_spacing(positions, batch_len):
 
     return spacings
 
+
+def find_batch_length(positions, bunch_spacing):
+    r'''
+    Finds the number of bunches in each batch and the number of batches.
+    The function assumes that all batches have the same length.
+
+    :param positions: The positions of all the bunches in the beam [ns]
+    :param bunch_spacing: The bunch spacing within a batch [ns]
+    :return: the number of bunches in each batch, number of batches
+    '''
+    n_batches = 1
+    batch_len = len(positions)
+    prev_pos = positions[0]
+
+    for i, pos in enumerate(positions):
+        if pos - prev_pos > 6 * bunch_spacing:
+            if n_batches == 1:
+                batch_len = i
+
+            n_batches += 1
+
+        prev_pos = pos
+
+    return batch_len, n_batches
 
 def bunch_position_from_COM(time, profile):
     M = np.trapz(profile, time)
@@ -462,6 +507,7 @@ def renormalize_profiles(profiles, ts, N=1):
         renorm_profiles = (N / N_i) * profiles
 
     return renorm_profiles
+
 
 def center_profiles(profiles, ts, pos=2.5e-9/2):
 

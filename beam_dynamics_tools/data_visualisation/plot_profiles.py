@@ -132,10 +132,30 @@ def plot_bunch_position(bp, time, j, save_to, COM=False):
         fig.savefig(save_to + 'bunch_position.png')
 
 
-def plot_total_losses(bloss, time, j, save_to, caploss=None):
+def plot_bunch_phase_offsets(phase_offset, turn, save_to):
     fig, ax = plt.subplots()
 
-    ax.plot(time[:j], np.sum(bloss, axis=1)[:j], c='black')
+    ax.set_title(f'Phase offset, Turn {turn}')
+    ax.plot(phase_offset * 1e3)
+    ax.set_xlabel(r'Bunch number [-]')
+    ax.set_ylabel(r'Bunch-by-bunch phase offset [ps]')
+
+    plt.savefig(save_to + f'phase_offset_{turn}.png')
+
+
+def plot_total_losses(bloss, time, j, save_to, caploss=None, beam_structure=None):
+    fig, ax = plt.subplots()
+
+    if beam_structure is None:
+        ax.plot(time[:j], np.sum(bloss, axis=1)[:j], c='black')
+    else:
+        bunches = np.zeros(1, dtype=int)
+        cmap = plt.get_cmap('plasma', len(beam_structure))
+        for inj in range(len(beam_structure)):
+            bunches = bunches[-1] + 1 + np.arange(beam_structure[inj], dtype=int)
+            ax.plot(time[:j], np.sum(bloss[:, bunches], axis=1)[:j], c=cmap(inj))
+
+
     ax.set_ylabel(r'Losses [Num. Protons]')
     ax.set_xlabel(r'Time since injection [s]')
     if caploss is not None:
