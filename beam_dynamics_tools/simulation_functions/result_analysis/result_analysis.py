@@ -19,7 +19,6 @@ class SimulationAnalysis(object):
         self.simulation_dir = simulation_dir
 
         self.simulation_parameters = {}
-        self.loss_summary = {}
 
     def get_simulation_parameters(self):
         r'''Gets the values of the parameters used in the simulation from the folder name.'''
@@ -49,13 +48,6 @@ class SimulationAnalysis(object):
 
         return self.simulation_parameters
 
-    def get_loss_summary(self):
-        r'''Retrieve losses from the loss summary file.'''
-
-        self.loss_summary = fetch_from_yaml('loss_summary.yaml', self.simulation_dir + self.simulation_name + '/')
-        return self.loss_summary
-
-    def get_turn_by_turn_quantity(self, filename):
-        r'''Retrieves turn-by-turn quantities.'''
-
-        return np.load(self.simulation_dir + '')
+    def get_data(self, filename):
+        r'''Retrieves data.'''
+        return np.load(self.simulation_dir + self.simulation_name + '/data/' + filename)
