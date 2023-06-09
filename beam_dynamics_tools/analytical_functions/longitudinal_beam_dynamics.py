@@ -10,6 +10,9 @@ import scipy.constants as spc
 import scipy.integrate as spi
 from scipy.interpolate import interp1d
 from scipy.special import jv, ellipk
+from scipy.optimize import fsolve
+
+from blond.impedances.impedance_sources import Resonators
 
 # Physical Parameters for the MD
 q = 1                           # [e]
@@ -369,3 +372,53 @@ def LHC_analytic_power_half_detuning(V_a, I_b):
 
 def generator_power(Ig, R_over_Q, Q_L):
     return 0.5 * R_over_Q * Q_L * np.absolute(Ig)**2
+
+
+def convert_detuning_to_phase(df, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000, deg=False):
+    r'''
+    Function to convert a given detuning value in Hz to phase in degrees or rad
+    :param df: Detuning in frequency [Hz]
+    :param LHCCavityLoop: BLonD LHC cavity loop object
+    :param R_over_Q: Cavity R over Q
+    :param f_r: Resonant frequency of the cavity [Hz]
+    :param Q_L: Loaded quality factor of cavity
+    :param deg: Option to get phase in degrees or radians
+    :return: Corresponding phase
+    '''
+    if LHCCavityLoop is not None:
+        R_over_Q = LHCCavityLoop.R_over_Q
+        Q_L = LHCCavityLoop.Q_L
+        f_r = LHCCavityLoop.omega_c / (2 * np.pi)
+
+    R_S = R_over_Q * Q_L
+
+    resonator = Resonators(R_S=R_S, frequency_R=f_r, Q=Q_L)
+
+    resonator.imped_calc(np.array([0, f_r + df]))
+
+    return np.angle(resonator.impedance[-1], deg=deg)
+
+def convert_phase_to_detuning(phase, guess, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000):
+    r'''
+    Function to convert a given detuning value in Hz to phase in degrees or rad
+    :param phase: Detuning phase
+    :param LHCCavityLoop: BLonD LHC cavity loop object
+    :param R_over_Q: Cavity R over Q
+    :param f_r: Resonant frequency of the cavity [Hz]
+    :param Q_L: Loaded quality factor of cavity
+    :return: Corresponding frequency
+    '''
+    if LHCCavityLoop is not None:
+        R_over_Q = LHCCavityLoop.R_over_Q
+        Q_L = LHCCavityLoop.Q_L
+        f_r = LHCCavityLoop.omega_c / (2 * np.pi)
+
+    R_S = R_over_Q * Q_L
+
+    Z = lambda f: R_S / (1 + 1j * Q_L * (f/f_r - f_r/f))
+    Z_phase = lambda f: np.angle(Z(f), deg=True) - phase
+
+    return fsolve(Z_phase, f_r + guess)[0] - f_r
+
+
+
