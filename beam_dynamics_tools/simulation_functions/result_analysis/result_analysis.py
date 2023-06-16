@@ -1,7 +1,7 @@
 '''
 Analysis of simulations.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

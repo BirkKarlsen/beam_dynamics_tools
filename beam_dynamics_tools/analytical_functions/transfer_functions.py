@@ -1,7 +1,7 @@
 '''
 Transfer functions from the LHC Cavity Loop.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

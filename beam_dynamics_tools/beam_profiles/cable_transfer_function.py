@@ -1,7 +1,7 @@
 '''
 Function to apply the cable transfer function to beam profile measurements.
 
-Author: Birk Emil Karlsen-Bæck, Danilo Quartullo
+Author: Birk Emil Karlsen-Baeck, Danilo Quartullo
 '''
 
 import numpy as np

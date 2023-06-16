@@ -1,12 +1,12 @@
 '''
 Functions to analyse bunch profile measurements.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np
 import h5py
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, InterpolatedUnivariateSpline
 from scipy.signal import find_peaks
 from scipy.stats import linregress
 import os
@@ -91,6 +91,51 @@ def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_
     return N_bunches, Bunch_positions, Bunch_peaks, Bunch_lengths, Bunch_intensities, Bunch_positionsFit, \
            Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit
 
+def get_beam_pattern(profiles, t, height_factor=0.015, distance=500, n_bunch_max=3564,
+                        wind_len=2.5e-9, single_turn=False):
+
+    if single_turn:
+        profiles = np.array([profiles]).T
+
+    dt = t[1] - t[0]
+
+    fit_window = int(round(wind_len / dt / 2))
+    n_frames = profiles.shape[0]
+
+    n_bunches = np.zeros(n_frames, dtype=int)
+    bunch_positions = np.zeros((n_frames, n_bunch_max))
+    bunch_lengths = np.zeros((n_frames, n_bunch_max))
+    bunch_peaks = np.zeros((n_frames, n_bunch_max))
+    bunch_peak_position = np.zeros((n_frames, n_bunch_max))
+
+    for i in np.arange(n_frames):
+        frame = profiles[i, :]
+
+        pos, _ = find_peaks(frame, height=height_factor, distance=distance)
+        n_bunches[i] = len(pos)
+
+        for j, v in enumerate(pos):
+            x = t[v - fit_window: v + fit_window]
+            y = frame[v - fit_window: v + fit_window]
+
+            (mu, sigma, amp) = fwhm(x, y, level=0.5)
+
+            bunch_lengths[i, j] = 4 * sigma
+            bunch_positions[i, j] = mu
+            bunch_peaks[i, j] = amp
+            bunch_peak_position[i, j] = peak_position(x, y, level=0.5)
+
+    n_bunch_max = np.max(n_bunches)
+    bunch_peaks = bunch_peaks[:, :n_bunch_max]
+    bunch_lengths = bunch_lengths[:, :n_bunch_max]
+    bunch_positions = bunch_positions[:, :n_bunch_max]
+    bunch_peak_position = bunch_peak_position[:, :n_bunch_max]
+
+    if single_turn:
+        return bunch_positions[0, :], bunch_lengths[0, :], bunch_peaks[0, :], bunch_peak_position[0, :]
+
+    return bunch_positions, bunch_lengths, bunch_peaks, bunch_peak_position
+
 
 def fwhm(x, y, level=0.5):
     offset_level = np.mean(y[0:5])
@@ -112,6 +157,18 @@ def interp_f(time, bunch, level):
     t2 = time[taux2] + (bunch[taux2] - bunch_th) / (bunch[taux2] - bunch[taux2 + 1]) * time_bet_points
 
     return t1, t2
+
+def peak_position(x, y, level=0.5):
+    r'''Find position of bunch peak from interpolation.'''
+    y_lvl = level * np.max(y)
+    inds = np.where(y >= y_lvl)
+
+    y_fit = InterpolatedUnivariateSpline(x[inds], y[inds], k=4)
+    roots = y_fit.derivative().roots()
+    root_val = y_fit(roots)
+    max_ind = np.argmax(root_val)
+
+    return roots[max_ind]
 
 
 def extract_bunch_position(time, profile, heighFactor=0.015, wind_len=10):

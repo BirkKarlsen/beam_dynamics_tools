@@ -1,7 +1,7 @@
 '''
 Functions to manipulate IQ-signals and signals related to feedbacks.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

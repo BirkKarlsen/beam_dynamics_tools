@@ -1,7 +1,7 @@
 '''
 Functions to plot profile data.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

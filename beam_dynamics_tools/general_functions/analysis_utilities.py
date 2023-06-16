@@ -1,7 +1,7 @@
 '''
 General functions to analyse varius types of data.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

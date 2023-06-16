@@ -1,7 +1,7 @@
 '''
 File with funtions to handle data from TIMBER.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

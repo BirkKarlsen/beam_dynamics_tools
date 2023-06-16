@@ -1,7 +1,7 @@
 r'''
 Diagnostics function object to get data from simulations.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 

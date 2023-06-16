@@ -1,7 +1,7 @@
 '''
 Functions used to generate beams for simulation.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

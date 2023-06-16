@@ -1,7 +1,7 @@
 '''
 Functions taken from analytical expressions from longitudinal beam dynamics.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 # Import

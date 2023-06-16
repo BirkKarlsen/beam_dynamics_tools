@@ -1,7 +1,7 @@
 '''
 Functions to get data from directories.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

@@ -1,7 +1,7 @@
 r'''
 Diagnostics function object to simulations in the LHC.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np

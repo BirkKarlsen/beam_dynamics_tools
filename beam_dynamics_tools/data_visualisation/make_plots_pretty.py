@@ -1,7 +1,7 @@
 '''
 Changes the rcParams in matplotlib.pyplot to make nicer looking plots.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import matplotlib.pyplot as plt

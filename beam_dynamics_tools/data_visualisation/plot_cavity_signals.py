@@ -1,7 +1,7 @@
 '''
 Functions to plot signals from the SPS and LHC Cavity Loops.
 
-Author: Birk Emil Karlsen-Bæck
+Author: Birk Emil Karlsen-Baeck
 '''
 
 import numpy as np
