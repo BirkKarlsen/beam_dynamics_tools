@@ -131,8 +131,8 @@ class SPSDiagnostics(Diagnostics):
             self.phase_offset[self.ind_cont, :] = bpt.bunch_by_bunch_spacing(bpos, batch_len=batch_len).flatten()
 
             # Analysis of control system
-            self.vcav_3sec[self.ind_cont, :] = self.cl.OTFB_1.V_ANT[-self.cl.OTFB_1.n_coarse:]
-            self.vcav_4sec[self.ind_cont, :] = self.cl.OTFB_2.V_ANT[-self.cl.OTFB_2.n_coarse:]
+            self.vcav_3sec[self.ind_cont, :] = self.cl.OTFB_1.V_ANT_COARSE[-self.cl.OTFB_1.n_coarse:]
+            self.vcav_4sec[self.ind_cont, :] = self.cl.OTFB_2.V_ANT_COARSE[-self.cl.OTFB_2.n_coarse:]
             self.power_3sec[self.ind_cont, :] = self.cl.OTFB_1.calc_power()[-self.cl.OTFB_1.n_coarse:]
             self.power_4sec[self.ind_cont, :] = self.cl.OTFB_2.calc_power()[-self.cl.OTFB_2.n_coarse:]
 

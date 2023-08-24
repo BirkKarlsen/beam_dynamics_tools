@@ -201,7 +201,7 @@ class LHCDiagnostics(Diagnostics):
             np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
                     self.cl.generator_power()[-self.cl.n_coarse:])
             np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
-                    self.cl.V_ANT[-self.cl.n_coarse:])
+                    self.cl.V_ANT_COARSE[-self.cl.n_coarse:])
             np.save(self.save_to + 'data/' + 'max_power.npy', self.max_power)
 
         if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
@@ -319,7 +319,7 @@ class LHCDiagnostics(Diagnostics):
             np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
                     self.cl.generator_power()[-self.cl.n_coarse:])
             np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
-                    self.cl.V_ANT[-self.cl.n_coarse:])
+                    self.cl.V_ANT_COARSE[-self.cl.n_coarse:])
             np.save(self.save_to + 'data/' + 'max_power.npy', self.max_power)
 
         if self.turns_after_injection >= 0 and self.turns_after_injection < 500:

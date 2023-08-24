@@ -23,7 +23,7 @@ def plot_generator_power(LHCCavityLoop, turn, save_to):
 
 def plot_cavity_voltage(LHCCavityLoop, turn, save_to):
     t = LHCCavityLoop.rf_centers
-    volt = LHCCavityLoop.V_ANT[-LHCCavityLoop.n_coarse:]
+    volt = LHCCavityLoop.V_ANT_COARSE[-LHCCavityLoop.n_coarse:]
 
     plt.figure()
     plt.title(f'Antenna Voltage, Turn {turn}')
@@ -60,7 +60,7 @@ def plot_twc_generator_power(SPSOneTurnFeedback, turn, save_to):
 
 def plot_twc_gap_voltage(SPSOneTurnFeedback, turn, save_to):
     t = SPSOneTurnFeedback.rf_centers
-    volt = np.abs(SPSOneTurnFeedback.V_ANT[-SPSOneTurnFeedback.n_coarse:])
+    volt = np.abs(SPSOneTurnFeedback.V_ANT_COARSE[-SPSOneTurnFeedback.n_coarse:])
 
     plt.figure()
     plt.title(f'Antenna voltage, turn {turn}')
