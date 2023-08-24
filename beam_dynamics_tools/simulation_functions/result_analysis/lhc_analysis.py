@@ -10,7 +10,7 @@ class LHCSimulationAnalysis(SimulationAnalysis):
 
     def __init__(self, simulation_name, simulation_dir, simulation_id=0):
 
-        super().__init__(simulation_name, simulation_dir, simulation_id=0)
+        super().__init__(simulation_name, simulation_dir, simulation_id=simulation_id)
 
         self.loss_summary = {}
         self.peak_power = None
