@@ -60,7 +60,7 @@ def H_cl(f, H_a, H_d, Z_cav, tau_loop=1.2e-6):
     :param tau_loop: Overall loop delay [s]
     :param H_a: Analog feedback transfer function at f [-]
     :param H_d: Digital feedback transfer function at f [-]
-    :param Z_cav: LHC Cavity transfer function at f [-]
+    :param Z_cav: LHC Cavity transfer function at f [ohm]
     :return: Complex value of the transfer at f
     '''
     H_ad = H_a + H_d
