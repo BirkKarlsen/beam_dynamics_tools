@@ -21,7 +21,7 @@ from beam_dynamics_tools.signal_analysis.measured_signals import fit_sin
 def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_max=3564,
                      fit_option='fwhm', plot_fit=False, baseline_length=1, BASE=False,
                      wind_len=10, beam=1, apply_tf=False):
-    dt = timeScale[1] - timeScale[0]
+    dt = (timeScale[-1] - timeScale[0])/(len(timeScale) - 1)
     fit_window = int(round(wind_len * 1e-9 / dt / 2))
     N_frames = frames.shape[1]
     N_bunches = np.zeros((N_frames,), dtype=int)

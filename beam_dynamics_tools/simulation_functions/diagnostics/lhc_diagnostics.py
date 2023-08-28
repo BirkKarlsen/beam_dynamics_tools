@@ -63,7 +63,7 @@ class LHCDiagnostics(Diagnostics):
         sps_lhc_dt = (((2 * np.pi * lbd.R_SPS)/(lbd.h_SPS * c * lbd.beta)) -
                       self.tracker.rf_params.t_rf[0, self.tracker.counter[0]])/2
         lhc_bucket_dt = bucket * self.tracker.rf_params.t_rf[0, self.tracker.counter[0]]
-        phase_offset_dt = self.tracker.rf_params.phi_rf[:, self.tracker.counter[0]] * \
+        phase_offset_dt = -self.tracker.rf_params.phi_rf[:, self.tracker.counter[0]] / \
                           self.tracker.rf_params.omega_rf[:, self.tracker.counter[0]]
 
         injected_beam[0, :] = injected_beam[0, :] - sps_lhc_dt + lhc_bucket_dt + phase_offset_dt
@@ -107,8 +107,8 @@ class LHCDiagnostics(Diagnostics):
     def measure_ramp_losses(self):
         r'''Method to measure losses at the end of a short ramp.'''
 
-        bucket_height = lbd.rf_bucket_height(self.tracker.voltage[0, self.tracker.counter[0]],
-                                             phi_s=self.tracker.phi_s[self.tracker.counter[0]])
+        bucket_height = lbd.rf_bucket_height(self.tracker.rf_params.voltage[0, self.tracker.counter[0]],
+                                             phi_s=self.tracker.rf_params.phi_s[self.tracker.counter[0]])
         self.tracker.beam.losses_below_energy(-bucket_height)
         losses_from_cut = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
 
