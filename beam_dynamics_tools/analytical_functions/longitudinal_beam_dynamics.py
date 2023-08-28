@@ -263,7 +263,7 @@ def find_emittance_single_RF(tau_b, V, h=h, eta=eta1, q=q, phi_s=phi_s, beta=bet
     omega_s = 2 * np.pi * synchrotron_frequency(V, h, eta, q, phi_s, beta, T_rev, E_s)
     omega_rf = 2 * np.pi * h / T_rev
     phi_b1 = omega_rf * tau_b / 2
-    return (4 * E_s * omega_s * beta**2)/(omega_rf**2 * eta) * calc_I(phi_b1)
+    return (4 * E_s * omega_s * beta**2)/(omega_rf**2 * np.abs(eta)) * calc_I(phi_b1)
 
 
 def find_bunch_length(tau_b, tau_b_guess=[0, 2.5e-9], q=q, beta=beta, E_s=E_s, SPS_dict=None, LHC_dict=None,
