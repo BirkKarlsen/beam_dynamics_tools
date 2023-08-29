@@ -392,11 +392,9 @@ def convert_detuning_to_phase(df, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6
 
     R_S = R_over_Q * Q_L
 
-    resonator = Resonators(R_S=R_S, frequency_R=f_r, Q=Q_L)
+    resonator = lambda f: R_S / (1 + 1j * Q_L * (f / f_r - f_r / f))
 
-    resonator.imped_calc(np.array([0, f_r + df]))
-
-    return np.angle(resonator.impedance[-1], deg=deg)
+    return np.angle(resonator(f_r + df), deg=deg)
 
 def convert_phase_to_detuning(phase, guess, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000):
     r'''
