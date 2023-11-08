@@ -30,6 +30,7 @@ class LHCDiagnostics(Diagnostics):
         super().__init__(RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
                  n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl, dt_ld=dt_ld)
 
+        # Beam
         self.turns_after_injection = 0
         self.injection_number = 0
         self.injection_scheme = injection_scheme
@@ -42,6 +43,19 @@ class LHCDiagnostics(Diagnostics):
             self.n_bunches += int(inj_data[3])
             self.beam_structure[inj] = int(inj_data[3])
             inj += 1
+        self.init_beam_measurements()
+
+        # LLRF
+        if LHCCavityLoop is None:
+            self.init_cl = getattr(self, 'empty_measurement')
+            self.cl_infreq_meas = getattr(self, 'empty_measurement')
+            self.cl_freq_meas = getattr(self, 'empty_measurement')
+        else:
+            self.init_cl = self.init_cavity_loop_measurements()
+            self.cl_infreq_meas = self.cavity_loop_infrequency_measurements()
+            self.cl_freq_meas = self.cavity_loop_frequent_measurements()
+
+        self.init_cl()
 
         if setting == 0:
             self.perform_measurements = getattr(self, 'standard_measurement')
@@ -80,14 +94,6 @@ class LHCDiagnostics(Diagnostics):
         self.profile.set_slices_parameters()
         self.profile.track()
 
-    def measure_uncaptured_losses(self):
-        r'''Method to measure uncaptured losses.'''
-
-        self.tracker.beam.losses_separatrix(self.ring, self.tracker.rf_params)
-        uncaptured_beam = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
-
-        return uncaptured_beam
-
     def measure_slow_losses(self):
         r'''Method to measure slow losses throughout the simulation.'''
         bunch_losses = np.zeros(self.n_bunches)
@@ -114,53 +120,59 @@ class LHCDiagnostics(Diagnostics):
 
         return losses_from_cut
 
+    def init_cavity_loop_measurements(self):
+        r'''Method to initiate necessary arrays for measurements of the cavity loop'''
+        self.power_transient = np.zeros((500, self.cl.n_coarse))
+
+    def cavity_loop_frequent_measurements(self):
+        r'''Frequent single-turn-single-value measurements'''
+        self.max_power = np.zeros(self.n_cont)
+        self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
+
+    def cavity_loop_infrequency_measurements(self):
+        r'''Infrequent single-turn-multi-value measurements'''
+        # Plot
+        pcs.plot_generator_power(self.cl, self.turn, self.save_to + 'figures/')
+        pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to + 'figures/')
+        pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
+
+        # Save
+        np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
+                self.cl.generator_power()[-self.cl.n_coarse:])
+        np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
+                self.cl.V_ANT_COARSE[-self.cl.n_coarse:])
+        np.save(self.save_to + 'data/' + 'max_power.npy', self.max_power)
+
+    def injection_power_transient_measurement(self):
+        r'''Method to measure injection power transients'''
+        # Gather power transients during the first 500 turns after the three injections
+        self.power_transient[self.turns_after_injection, :] = self.cl.generator_power()[-self.cl.n_coarse:]
+
+        # Save power transients after 500 turns
+        if self.turns_after_injection == 499:
+            np.save(self.save_to + 'data/' + f'power_transient_injection_{self.injection_number}.npy',
+                    self.power_transient)
+            self.power_transient = np.zeros((500, self.cl.n_coarse))
+
     def standard_measurement(self):
         r'''Default measurement rutine for LHC simulations.'''
 
         # Setting up arrays on initial track call
         if self.turn == 0:
-            self.time_turns = np.linspace(0,
-                                          (self.tracker.rf_params.n_turns - 1) * self.tracker.rf_params.t_rev[0],
-                                          self.n_cont)
-
-            self.max_power = np.zeros(self.n_cont)
-            self.power_transient = np.zeros((500, self.cl.n_coarse))
-
-            self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
-            self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
-
-            self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
             self.uncaptured_beam = self.measure_uncaptured_losses()
 
             loss_dict = {'Uncaptured losses': self.uncaptured_beam}
             ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
-            self.beam_profile = np.zeros((self.n_ld, len(self.profile.n_macroparticles)))
-
-            if not os.path.isdir(self.save_to + 'figures/'):
-                os.mkdir(self.save_to + 'figures/')
-
-            if not os.path.isdir(self.save_to + 'data/'):
-                os.mkdir(self.save_to + 'data/')
-
         # Line density measurement
         if self.turn % self.dt_ld == 0 and self.ind_ld < self.n_ld:
-            self.beam_profile[self.ind_ld, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
-
+            self.line_density_measurement()
             self.ind_ld += 1
 
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0 and self.ind_cont < self.n_cont:
-            self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
-
-            bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers,
-                                                            self.profile.n_macroparticles * self.tracker.beam.ratio,
-                                                            heighFactor=1000 * self.tracker.beam.ratio, wind_len=2.5,
-                                                            n_bunches=self.n_bunches)
-            self.bunch_lengths[self.ind_cont, :] = blen
-            self.bunch_positions[self.ind_cont, :] = bpos
-            self.bunch_intensities[self.ind_cont, :] = bint
+            self.cl_freq_meas()
+            self.beam_frequent_measurements()
             self.bunch_losses[self.ind_cont, :] = self.bunch_intensities[0, :] - \
                                                   self.bunch_intensities[self.ind_cont, :]
 
@@ -168,52 +180,27 @@ class LHCDiagnostics(Diagnostics):
 
         # Gather beam based measurements, save plots and save data
         if self.turn % self.dt_beam == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
+            self.beam_infrequent_measurements()
+
             # Plots
-            ppr.plot_profile(self.profile, self.turn, self.save_to + 'figures/')
-            ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
-            ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
             ppr.plot_total_losses(self.bunch_losses, self.time_turns,
                                   self.ind_cont - 1, self.save_to + 'figures/',
                                   caploss=self.uncaptured_beam)
 
-            # Save
-            np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
-            np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
-            np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
-            np.save(self.save_to + 'data/' + 'bunch_intensities.npy', self.bunch_intensities)
-            np.save(self.save_to + 'data/' + 'bunch_losses.npy', self.bunch_losses)
-
             if self.turn == self.tracker.rf_params.n_turns - 1:
-
-                self.losses_from_cut = self.measure_ramp_losses()
-                loss_dict = {'Losses after ramp': self.losses_from_cut}
+                loss_dict = {'Losses after ramp': self.measure_ramp_losses()}
                 ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
+                loss_dict = {'End of simulation losses (separatrix)': self.measure_uncaptured_losses()}
+                ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
         # Gather cavity based measurements, save plots and save data
         if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
-            # Plot
-            pcs.plot_generator_power(self.cl, self.turn, self.save_to + 'figures/')
-            pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to + 'figures/')
-            pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
-
-            # Save
-            np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
-                    self.cl.generator_power()[-self.cl.n_coarse:])
-            np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
-                    self.cl.V_ANT_COARSE[-self.cl.n_coarse:])
-            np.save(self.save_to + 'data/' + 'max_power.npy', self.max_power)
+            self.cl_infreq_meas()
 
         if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
-            # Gather power transients during the first 500 turns after the three injections
-            self.power_transient[self.turns_after_injection, :] = self.cl.generator_power()[-self.cl.n_coarse:]
+            self.injection_power_transient_measurement()
             self.turns_after_injection += 1
-
-            # Save power transients after 500 turns
-            if self.turns_after_injection == 500:
-                np.save(self.save_to + 'data/' + f'power_transient_injection_{self.injection_number}.npy',
-                        self.power_transient)
-                self.power_transient = np.zeros((500, self.cl.n_coarse))
 
         plt.clf()
         plt.cla()
@@ -237,101 +224,47 @@ class LHCDiagnostics(Diagnostics):
 
         # Setting up arrays on initial track call
         if self.turn == 0:
-            self.time_turns = np.linspace(0,
-                                          (self.tracker.rf_params.n_turns - 1) * self.tracker.rf_params.t_rev[0],
-                                          self.n_cont)
-
-            self.max_power = np.zeros(self.n_cont)
-            self.power_transient = np.zeros((500, self.cl.n_coarse))
-
             print(f'Found {self.n_bunches} to be injected in total')
-
-            self.bunch_positions = np.zeros((self.n_cont, self.n_bunches))
-            self.bunch_lengths = np.zeros((self.n_cont, self.n_bunches))
-            self.bunch_intensities = np.zeros((self.n_cont, self.n_bunches))
-            self.bunch_losses = np.zeros((self.n_cont, self.n_bunches))
 
             self.uncaptured_beam = self.measure_uncaptured_losses()
 
             loss_dict = {f'Uncaptured losses {self.injection_number}': self.uncaptured_beam}
             ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
-            self.beam_profile = np.zeros((self.n_ld, len(self.profile.n_macroparticles)))
-
-            if not os.path.isdir(self.save_to + 'figures/'):
-                os.mkdir(self.save_to + 'figures/')
-
-            if not os.path.isdir(self.save_to + 'data/'):
-                os.mkdir(self.save_to + 'data/')
-
         # Line density measurement
         if self.turn % self.dt_ld == 0 and self.ind_ld < self.n_ld:
-            self.beam_profile[self.ind_ld, :] = self.profile.n_macroparticles * self.tracker.beam.ratio
+            self.line_density_measurement()
             self.ind_ld += 1
 
         # Gather signals which are frequently sampled
         if self.turn % self.dt_cont == 0 and self.ind_cont < self.n_cont:
-            self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
-
-            bpos, blen, bint = bpt.extract_bunch_parameters(self.profile.bin_centers, self.profile.n_macroparticles *
-                                                            self.tracker.beam.ratio,
-                                                            heighFactor=1000 * self.tracker.beam.ratio,
-                                                            distance=500, wind_len=2.5,
-                                                            n_bunches=self.n_bunches)
-
-            self.bunch_lengths[self.ind_cont, :] = blen
-            self.bunch_positions[self.ind_cont, :] = bpos
-            self.bunch_intensities[self.ind_cont, :] = bint
+            self.cl_freq_meas()
+            self.beam_frequent_measurements()
             self.bunch_losses[self.ind_cont, :] = self.measure_slow_losses()
 
             self.ind_cont += 1
 
         # Gather beam based measurements, save plots and save data
         if self.turn % self.dt_beam == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
-            # Plots
-            ppr.plot_profile(self.profile, self.turn, self.save_to + 'figures/')
-            ppr.plot_bunch_length(self.bunch_lengths, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
-            ppr.plot_bunch_position(self.bunch_positions, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
+            self.beam_infrequent_measurements()
             ppr.plot_total_losses(self.bunch_losses, self.time_turns,
                                   self.ind_cont - 1, self.save_to + 'figures/',
                                   caploss=self.uncaptured_beam, beam_structure=self.beam_structure)
 
-            # Save
-            np.save(self.save_to + 'data/' + 'beam_profiles.npy', self.beam_profile)
-            np.save(self.save_to + 'data/' + 'bunch_lengths.npy', self.bunch_lengths)
-            np.save(self.save_to + 'data/' + 'bunch_positions.npy', self.bunch_positions)
-            np.save(self.save_to + 'data/' + 'bunch_intensities.npy', self.bunch_intensities)
-            np.save(self.save_to + 'data/' + 'bunch_losses.npy', self.bunch_losses)
-
             if self.turn == self.tracker.rf_params.n_turns - 1:
-                self.losses_from_cut = self.measure_ramp_losses()
-                loss_dict = {'Losses after ramp': self.losses_from_cut}
+                loss_dict = {'Losses after ramp': self.measure_ramp_losses()}
+                ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
+
+                loss_dict = {'End of simulation losses (separatrix)': self.measure_uncaptured_losses()}
                 ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
 
         # Gather cavity based measurements, save plots and save data
         if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
-            # Plot
-            pcs.plot_generator_power(self.cl, self.turn, self.save_to + 'figures/')
-            pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to + 'figures/')
-            pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
-
-            # Save
-            np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
-                    self.cl.generator_power()[-self.cl.n_coarse:])
-            np.save(self.save_to + 'data/' + f'ant_volt_{self.turn}.npy',
-                    self.cl.V_ANT_COARSE[-self.cl.n_coarse:])
-            np.save(self.save_to + 'data/' + 'max_power.npy', self.max_power)
+            self.cl_infreq_meas()
 
         if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
-            # Gather power transients during the first 500 turns after the three injections
-            self.power_transient[self.turns_after_injection, :] = self.cl.generator_power()[-self.cl.n_coarse:]
+            self.injection_power_transient_measurement()
             self.turns_after_injection += 1
-
-            # Save power transients after 500 turns
-            if self.turns_after_injection == 500:
-                np.save(self.save_to + 'data/' + f'power_transient_injection_{self.injection_number}.npy',
-                        self.power_transient)
-                self.power_transient = np.zeros((500, self.cl.n_coarse))
 
         # Close all figures for this turn
         plt.clf()
