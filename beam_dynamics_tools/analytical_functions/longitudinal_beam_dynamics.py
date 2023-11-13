@@ -374,7 +374,7 @@ def generator_power(Ig, R_over_Q, Q_L):
     return 0.5 * R_over_Q * Q_L * np.absolute(Ig)**2
 
 
-def convert_detuning_to_phase(df, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000, deg=False):
+def convert_detuning_to_phase(df, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000, deg=False, RFFB=None):
     r'''
     Function to convert a given detuning value in Hz to phase in degrees or rad
     :param df: Detuning in frequency [Hz]
@@ -392,11 +392,16 @@ def convert_detuning_to_phase(df, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6
 
     R_S = R_over_Q * Q_L
 
-    resonator = lambda f: R_S / (1 + 1j * Q_L * (f / f_r - f_r / f))
+    if RFFB is None:
+        resonator = lambda f: R_S / (1 + 1j * Q_L * (f / f_r - f_r / f))
+        impedance = lambda f: resonator(f)
+    else:
+        resonator = lambda f: R_S / (1 + 1j * Q_L * (f / f_r - f_r / f))
+        impedance = lambda f: resonator(f) / (1 + RFFB(f) * resonator(f))
 
-    return np.angle(resonator(f_r + df), deg=deg)
+    return np.angle(impedance(f_r + df), deg=deg)
 
-def convert_phase_to_detuning(phase, guess, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000):
+def convert_phase_to_detuning(phase, guess, LHCCavityLoop=None, R_over_Q=45, f_r=400.789e6, Q_L=20000, RFFB=None):
     r'''
     Function to convert a given detuning value in Hz to phase in degrees or rad
     :param phase: Detuning phase
@@ -413,8 +418,12 @@ def convert_phase_to_detuning(phase, guess, LHCCavityLoop=None, R_over_Q=45, f_r
 
     R_S = R_over_Q * Q_L
 
-    Z = lambda f: R_S / (1 + 1j * Q_L * (f/f_r - f_r/f))
-    Z_phase = lambda f: np.angle(Z(f), deg=True) - phase
+    if RFFB is None:
+        Z = lambda f: R_S / (1 + 1j * Q_L * (f/f_r - f_r/f))
+        Z_phase = lambda f: np.angle(Z(f), deg=True) - phase
+    else:
+        Z = lambda f: R_S / (1 + 1j * Q_L * (f / f_r - f_r / f)) * RFFB(f)
+        Z_phase = lambda f: np.angle(Z(f), deg=True) - phase
 
     return fsolve(Z_phase, f_r + guess)[0] - f_r
 
