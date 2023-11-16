@@ -69,32 +69,35 @@ class LHCDiagnostics(Diagnostics):
     def injection(self, beam_ID, bucket, simulated):
         r'''Injection of beam from the SPS into the LHC.'''
 
-        # import beam
-        if simulated:
-            injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'simulated_beam.npy')
+        if beam_ID == "no injections":
+            pass
         else:
-            injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'generated_beam.npy')
+            # import beam
+            if simulated:
+                injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'simulated_beam.npy')
+            else:
+                injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'generated_beam.npy')
 
-        # place beam in the correct RF bucket
-        sps_lhc_dt = (((2 * np.pi * lbd.R_SPS)/(lbd.h_SPS * c * lbd.beta)) -
-                      self.tracker.rf_params.t_rf[0, self.tracker.counter[0]])/2
-        lhc_bucket_dt = bucket * self.tracker.rf_params.t_rf[0, self.tracker.counter[0]]
-        phase_offset_dt = -self.tracker.rf_params.phi_rf[:, self.tracker.counter[0]] / \
-                          self.tracker.rf_params.omega_rf[:, self.tracker.counter[0]]
+            # place beam in the correct RF bucket
+            sps_lhc_dt = (((2 * np.pi * lbd.R_SPS)/(lbd.h_SPS * c * lbd.beta)) -
+                          self.tracker.rf_params.t_rf[0, self.tracker.counter[0]])/2
+            lhc_bucket_dt = bucket * self.tracker.rf_params.t_rf[0, self.tracker.counter[0]]
+            phase_offset_dt = -self.tracker.rf_params.phi_rf[:, self.tracker.counter[0]] / \
+                              self.tracker.rf_params.omega_rf[:, self.tracker.counter[0]]
 
-        injected_beam[0, :] = injected_beam[0, :] - sps_lhc_dt + lhc_bucket_dt + phase_offset_dt
+            injected_beam[0, :] = injected_beam[0, :] - sps_lhc_dt + lhc_bucket_dt + phase_offset_dt
 
-        # Add macroparticles to beam class
-        self.tracker.beam += injected_beam
-        self.tracker.beam.intensity = self.tracker.beam.ratio * self.tracker.beam.n_macroparticles
-        self.turns_after_injection = 0
-        self.injection_number += 1
+            # Add macroparticles to beam class
+            self.tracker.beam += injected_beam
+            self.tracker.beam.intensity = self.tracker.beam.ratio * self.tracker.beam.n_macroparticles
+            self.turns_after_injection = 0
+            self.injection_number += 1
 
-        # Modify cuts of the Beam Profile
-        self.tracker.beam.statistics()
-        self.profile.cut_options.track_cuts(self.tracker.beam)
-        self.profile.set_slices_parameters()
-        self.profile.track()
+            # Modify cuts of the Beam Profile
+            self.tracker.beam.statistics()
+            self.profile.cut_options.track_cuts(self.tracker.beam)
+            self.profile.set_slices_parameters()
+            self.profile.track()
 
     def measure_slow_losses(self):
         r'''Method to measure slow losses throughout the simulation.'''
