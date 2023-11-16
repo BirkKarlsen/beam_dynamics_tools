@@ -7,7 +7,7 @@ Author: Birk Emil Karlsen-Baeck
 import numpy as np
 import beam_dynamics_tools.beam_profiles.bunch_profile_tools as bpt
 import beam_dynamics_tools.data_visualisation.plot_profiles as ppr
-
+import os
 
 class Diagnostics(object):
     r'''Object for diagnostics of both the beam and the RF system in simulations.'''

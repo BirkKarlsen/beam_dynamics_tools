@@ -50,10 +50,12 @@ class LHCDiagnostics(Diagnostics):
             self.init_cl = getattr(self, 'empty_measurement')
             self.cl_infreq_meas = getattr(self, 'empty_measurement')
             self.cl_freq_meas = getattr(self, 'empty_measurement')
+            self.inj_power = getattr(self, 'empty_measurement')
         else:
-            self.init_cl = self.init_cavity_loop_measurements()
-            self.cl_infreq_meas = self.cavity_loop_infrequency_measurements()
-            self.cl_freq_meas = self.cavity_loop_frequent_measurements()
+            self.init_cl = self.init_cavity_loop_measurements
+            self.cl_infreq_meas = self.cavity_loop_infrequency_measurements
+            self.cl_freq_meas = self.cavity_loop_frequent_measurements
+            self.inj_power = self.injection_power_transient_measurement
 
         self.init_cl()
 
@@ -123,10 +125,10 @@ class LHCDiagnostics(Diagnostics):
     def init_cavity_loop_measurements(self):
         r'''Method to initiate necessary arrays for measurements of the cavity loop'''
         self.power_transient = np.zeros((500, self.cl.n_coarse))
+        self.max_power = np.zeros(self.n_cont)
 
     def cavity_loop_frequent_measurements(self):
         r'''Frequent single-turn-single-value measurements'''
-        self.max_power = np.zeros(self.n_cont)
         self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
     def cavity_loop_infrequency_measurements(self):
@@ -199,7 +201,7 @@ class LHCDiagnostics(Diagnostics):
             self.cl_infreq_meas()
 
         if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
-            self.injection_power_transient_measurement()
+            self.inj_power()
             self.turns_after_injection += 1
 
         plt.clf()
@@ -263,7 +265,7 @@ class LHCDiagnostics(Diagnostics):
             self.cl_infreq_meas()
 
         if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
-            self.injection_power_transient_measurement()
+            self.inj_power()
             self.turns_after_injection += 1
 
         # Close all figures for this turn
