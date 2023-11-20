@@ -9,13 +9,13 @@ import matplotlib.pyplot as plt
 import os
 from scipy.constants import c
 
-import beam_dynamics_tools.analytical_functions.longitudinal_beam_dynamics as lbd
-import beam_dynamics_tools.beam_profiles.bunch_profile_tools as bpt
 import beam_dynamics_tools.data_visualisation.plot_profiles as ppr
 import beam_dynamics_tools.data_visualisation.plot_cavity_signals as pcs
 import beam_dynamics_tools.data_management.importing_data as ida
 
 from beam_dynamics_tools.simulation_functions.diagnostics.diagnostics_base import Diagnostics
+
+from blond.trackers.utilities import separatrix
 
 
 class LHCDiagnostics(Diagnostics):
@@ -79,7 +79,7 @@ class LHCDiagnostics(Diagnostics):
                 injected_beam = np.load(self.get_from + 'generated_beams/' + beam_ID + 'generated_beam.npy')
 
             # place beam in the correct RF bucket
-            sps_lhc_dt = (((2 * np.pi * lbd.R_SPS)/(lbd.h_SPS * c * lbd.beta)) -
+            sps_lhc_dt = (((2 * np.pi * 1100.009)/(4620 * c * self.ring.beta[0, self.tracker.counter[0]])) -
                           self.tracker.rf_params.t_rf[0, self.tracker.counter[0]])/2
             lhc_bucket_dt = bucket * self.tracker.rf_params.t_rf[0, self.tracker.counter[0]]
             phase_offset_dt = -self.tracker.rf_params.phi_rf[:, self.tracker.counter[0]] / \
@@ -118,8 +118,10 @@ class LHCDiagnostics(Diagnostics):
     def measure_ramp_losses(self):
         r'''Method to measure losses at the end of a short ramp.'''
 
-        bucket_height = lbd.rf_bucket_height(self.tracker.rf_params.voltage[0, self.tracker.counter[0]],
-                                             phi_s=self.tracker.rf_params.phi_s[self.tracker.counter[0]])
+        bucket_height = separatrix(self.ring, self.tracker.rf_params,
+                                   self.tracker.rf_params.phi_s[self.tracker.counter[0]] / (2 * np.pi) *
+                                   self.tracker.rf_params.t_rf[0, self.tracker.counter[0]])
+
         self.tracker.beam.losses_below_energy(-bucket_height)
         losses_from_cut = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
 
