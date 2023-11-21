@@ -119,10 +119,10 @@ class LHCDiagnostics(Diagnostics):
         r'''Method to measure losses at the end of a short ramp.'''
 
         bucket_height = separatrix(self.ring, self.tracker.rf_params,
-                                   self.tracker.rf_params.phi_s[self.tracker.counter[0]] / (2 * np.pi) *
-                                   self.tracker.rf_params.t_rf[0, self.tracker.counter[0]])
+                                   np.array([self.tracker.rf_params.phi_s[self.tracker.counter[0]] / (2 * np.pi) *
+                                   self.tracker.rf_params.t_rf[0, self.tracker.counter[0]]]))
 
-        self.tracker.beam.losses_below_energy(-bucket_height)
+        self.tracker.beam.losses_below_energy(-bucket_height[0])
         losses_from_cut = self.tracker.beam.n_macroparticles_lost * self.tracker.beam.ratio
 
         return losses_from_cut
