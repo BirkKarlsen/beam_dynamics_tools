@@ -91,6 +91,7 @@ def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_
     return N_bunches, Bunch_positions, Bunch_peaks, Bunch_lengths, Bunch_intensities, Bunch_positionsFit, \
            Bunch_peaksFit, Bunch_Exponent, Goodness_of_fit
 
+
 def get_beam_pattern(profiles, t, height_factor=0.015, distance=500, n_bunch_max=3564,
                         wind_len=2.5e-9, single_turn=False):
 
