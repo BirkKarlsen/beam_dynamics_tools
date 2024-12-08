@@ -20,7 +20,7 @@ def set_profile_reference(profiles, new_reference=0, sample=25):
 
 
 def apply_lhc_cable_tf(profile, t, beam, extend=100e-9):
-    tf_dir = f'../transfer_functions/'
+    dir_fil = os.path.dirname(os.path.abspath(__file__)) + '/cable_transfer_functions/'
     profile = set_profile_reference(profile, new_reference=0, sample=25)
     dt = t[1] - t[0]
     init_length = len(t)
@@ -34,7 +34,7 @@ def apply_lhc_cable_tf(profile, t, beam, extend=100e-9):
     noints = t.shape[0]
     freq = np.fft.fftfreq(noints, d=dt)
 
-    h5file = h5py.File(tf_dir + 'TF_B' + str(beam) + '.h5', 'r')
+    h5file = h5py.File(dir_fil + 'TF_B' + str(beam) + '.h5', 'r')
     freq_array = np.array(h5file["/TransferFunction/freq"])
     TF_array = np.array(h5file["/TransferFunction/TF"])
     h5file.close()
@@ -51,18 +51,19 @@ def apply_lhc_cable_tf(profile, t, beam, extend=100e-9):
     return filtered[:init_length], t[:init_length]
 
 
-def sps_cable_tranfer_function(profile_time, profile_current):
+def sps_cable_tranfer_function(profile_time, profile_current, year: int = 2021):
     r'''
     Takes in time-array and profile-array and applies the cable tranfer function of the SPS.
 
     code written by Danilo Quartullo
     :param profile_time: numpy-array with time sample points
     :param profile_current: numpy-array with profile measurement
+    :param year: int the year the TF was measured
     :return: profile measurement with cable transfer function applied
     '''
     # Import the CTF unfiltered
     dir_fil = os.path.dirname(os.path.abspath(__file__)) + '/cable_transfer_functions/'
-    data = np.load(dir_fil + 'cableTF.npz')
+    data = np.load(dir_fil + f'cableTF_{year}.npz')
     tf = data['transfer']
     freq_tf = data['freqArray']
     Delta_f = freq_tf[1] - freq_tf[0]  # 40 MHz
@@ -105,7 +106,7 @@ def sps_cable_tranfer_function(profile_time, profile_current):
     return CTF_profile
 
 
-def apply_sps_cable_tf(profile, t, extend=100e-9):
+def apply_sps_cable_tf(profile, t, extend: float = 100e-9, year: int = 2021):
     tf_dir = f'../transfer_functions/'
     profile = set_profile_reference(profile, new_reference=0, sample=25)
     dt = t[1] - t[0]
@@ -118,20 +119,22 @@ def apply_sps_cable_tf(profile, t, extend=100e-9):
 
     # Recalculate the number of points and the frequency array
     noints = t.shape[0]
-    freq = np.fft.fftfreq(noints, d=dt)
+    freq = np.fft.rfftfreq(noints, d=dt)
 
     dir_fil = os.path.dirname(os.path.abspath(__file__)) + '/cable_transfer_functions/'
-    data = np.load(dir_fil + 'cableTF.npz')
-    TF_array = data['transfer']
+    data = np.load(dir_fil + f'cableTF_{year}.npz')
+    
+    tf_array = data['transfer']
     freq_array = data['freqArray']
-    TF = np.interp(freq, np.fft.fftshift(freq_array), np.fft.fftshift(TF_array.real)) + \
-         1j * np.interp(freq, np.fft.fftshift(freq_array), np.fft.fftshift(TF_array.imag))
+    
+    tf = np.interp(freq, freq_array, tf_array.real) + \
+         1j * np.interp(freq, freq_array, tf_array.imag)
 
     # Remove zeros in high-frequencies
-    TF[TF == 0] = 1.0 + 0j
+    tf[tf == 0] = 1.0 + 0j
 
     # Deconvolution
-    filtered_f = np.fft.fft(profile) / TF
-    filtered = np.fft.ifft(filtered_f).real
+    filtered_f = np.fft.rfft(profile, n=noints) / tf
+    filtered = np.fft.irfft(filtered_f).real
     filtered -= filtered[:10].mean()
     return filtered[:init_length], t[:init_length]
