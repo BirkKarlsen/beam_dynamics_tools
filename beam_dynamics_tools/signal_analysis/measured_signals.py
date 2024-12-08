@@ -49,9 +49,11 @@ def fit_sin(tt, yy):
     try:
         popt, pcov = scipy.optimize.curve_fit(sinfunc, tt, yy, p0=guess)
     except:
-        plt.figure()
-        plt.plot(tt, yy)
-        plt.show()
+        #plt.figure()
+        #plt.plot(tt, yy)
+        #plt.show()
+        popt = (-1, -1, -1, -1, -1)
+        pcov = np.zeros((len(popt), len(popt)))
 
     A, w, p, c, alpha = popt
     f = w/(2.*np.pi)
