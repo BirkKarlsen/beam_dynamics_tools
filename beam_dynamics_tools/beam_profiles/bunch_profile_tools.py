@@ -96,7 +96,7 @@ def get_beam_pattern(profiles, t, height_factor=0.015, distance=500, n_bunch_max
                         wind_len=2.5e-9, single_turn=False):
 
     if single_turn:
-        profiles = np.array([profiles]).T
+        profiles = np.array([profiles])
 
     dt = t[1] - t[0]
 
@@ -108,6 +108,7 @@ def get_beam_pattern(profiles, t, height_factor=0.015, distance=500, n_bunch_max
     bunch_lengths = np.zeros((n_frames, n_bunch_max))
     bunch_peaks = np.zeros((n_frames, n_bunch_max))
     bunch_peak_position = np.zeros((n_frames, n_bunch_max))
+    bunch_intensities = np.zeros((n_frames, n_bunch_max))
 
     for i in np.arange(n_frames):
         frame = profiles[i, :]
@@ -125,17 +126,25 @@ def get_beam_pattern(profiles, t, height_factor=0.015, distance=500, n_bunch_max
             bunch_positions[i, j] = mu
             bunch_peaks[i, j] = amp
             bunch_peak_position[i, j] = peak_position(x, y, level=0.5)
+            bunch_intensities[i, j] = intensity(y)
 
     n_bunch_max = np.max(n_bunches)
     bunch_peaks = bunch_peaks[:, :n_bunch_max]
     bunch_lengths = bunch_lengths[:, :n_bunch_max]
     bunch_positions = bunch_positions[:, :n_bunch_max]
     bunch_peak_position = bunch_peak_position[:, :n_bunch_max]
+    bunch_intensities = bunch_intensities[:, :n_bunch_max]
 
     if single_turn:
-        return bunch_positions[0, :], bunch_lengths[0, :], bunch_peaks[0, :], bunch_peak_position[0, :]
+        return bunch_positions[0, :], bunch_lengths[0, :], bunch_peaks[0, :], bunch_peak_position[0, :], \
+                        bunch_intensities[0, :]
 
-    return bunch_positions, bunch_lengths, bunch_peaks, bunch_peak_position
+    return bunch_positions, bunch_lengths, bunch_peaks, bunch_peak_position, bunch_intensities
+
+
+def intensity(y):
+    offset_level = np.mean(y[0:5])
+    return np.sum(y - offset_level)
 
 
 def fwhm(x, y, level=0.5):
