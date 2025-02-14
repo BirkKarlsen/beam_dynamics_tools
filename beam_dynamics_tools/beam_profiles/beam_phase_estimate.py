@@ -6,26 +6,35 @@ Author: Birk Emil Karlsen-Bæck
 
 import numpy as np
 import h5py
+from blond.trackers.tracker import RingAndRFTracker
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.constants import c, e, proton_mass
+
+import blond.utils.bmath as bm
 
 E_0 = proton_mass * c ** 2 / e
 synchronous_energy = lambda p_s: np.sqrt(p_s ** 2 + E_0 ** 2)
 relativistic_gamma = lambda E_s: E_s / E_0
 relativistic_beta = lambda gamma: np.sqrt(1 - 1 / gamma ** 2)
 
+from blond.beam.profile import Profile
+
 
 # Beam-phase calculation from BLonD
 def beam_phase(bin_centers: np.ndarray, profile: np.ndarray,
                alpha: float, omegarf: float,
                phirf: float, bin_size: float) -> float:
-    scoeff = np.trapz(np.exp(alpha * (bin_centers))
-                      * np.sin(omegarf * bin_centers + phirf)
-                      * profile, dx=bin_size)
-    ccoeff = np.trapz(np.exp(alpha * (bin_centers))
-                      * np.cos(omegarf * bin_centers + phirf)
-                      * profile, dx=bin_size)
+    scoeff = np.trapezoid(
+        np.exp(alpha * (bin_centers))
+        * np.sin(omegarf * bin_centers + phirf)
+        * profile, dx=bin_size
+    )
+    ccoeff = np.trapezoid(
+        np.exp(alpha * (bin_centers))
+        * np.cos(omegarf * bin_centers + phirf)
+        * profile, dx=bin_size
+    )
 
     return scoeff / ccoeff
 
@@ -151,6 +160,67 @@ class LHCBeamPhase(MeasuredBeamPhase):
             profiles, sampling, beam_momentum, n_bunches, time_shift, jitter,
             alpha=0, C=26658.883, h=35640, phi_rf=0
         )
+
+
+class SimulatedBeamPhase:
+
+    def __init__(self, profile: Profile, rf_tracker: RingAndRFTracker, n_bunches: int = 1, n_bunches_init: int = None):
+
+        self.profile = profile
+        self.rf_tracker = rf_tracker
+        self.n_bunches = n_bunches
+
+        if n_bunches_init is None:
+            self.n_bunches_current = self.n_bunches
+
+        self.bunch_phases = np.zeros(n_bunches)
+
+    def set_number_of_bunches(self, new_number_of_bunches: float):
+        self.n_bunches_current = new_number_of_bunches
+
+    def extract_phases(self, no_beam_thres: float = 0.5):
+        omega_rf = self.rf_tracker.rf_params.omega_rf[0, self.rf_tracker.rf_params.counter[0]]
+        phi_rf = self.rf_tracker.rf_params.phi_rf[0, self.rf_tracker.rf_params.counter[0]]
+        time_frame = self.profile.bin_centers
+        normalized_profile = (np.copy(self.profile.n_macroparticles)
+                              / np.sum(self.profile.n_macroparticles) * self.n_bunches_current)
+
+        n_buckets = int((self.profile.bin_centers[-1] - self.profile.bin_centers[0])
+                        * omega_rf / (2 * np.pi))
+        rf_period = 2 * np.pi / omega_rf
+        time_shift = (int(time_frame[0] * omega_rf / (2 * np.pi)) + 1)
+        bunch_ind = 0
+
+        for i in range(n_buckets):
+            bucket_center = self.rf_tracker.rf_params.bucket_center(i + time_shift)
+            left_side = bucket_center - rf_period/2
+            right_side = bucket_center + rf_period/2
+            mask_i = (time_frame > left_side) & (time_frame < right_side)
+
+            # Get time
+            time_bucket = time_frame[mask_i]
+
+            # Get profile measurement for bucket i
+            frame_bucket = normalized_profile[mask_i]
+
+            if np.sum(frame_bucket) > no_beam_thres:
+                self.bunch_phases[bunch_ind] = self.analyse_bunch(
+                    frame_bucket, time_bucket, omega_rf, phi_rf,
+                    self.profile.bin_size
+                )
+                bunch_ind += 1
+
+        return self.bunch_phases * 180 / np.pi
+
+    @staticmethod
+    def analyse_bunch(single_profile, time_array, omega_rf, phi_rf, bin_size):
+
+        coeff = bm.beam_phase(
+            time_array, single_profile,
+            0, omega_rf, phi_rf, bin_size
+        )
+
+        return np.arctan(coeff)
 
 
 def main():
