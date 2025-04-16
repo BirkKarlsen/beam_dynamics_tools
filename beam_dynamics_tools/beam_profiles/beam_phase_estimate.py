@@ -107,7 +107,7 @@ class MeasuredBeamPhase:
         # Find number of rf buckets to iterate over
         n_buckets = int(self.full_time[-1] // self.rf_period)
 
-        for i in tqdm(range(n_buckets)):
+        for i in tqdm(range(n_buckets), desc="Analyzing buckets", unit="buckets", position=1, leave=False):
 
             mask_i = (self.full_time > i * self.rf_period) & (self.full_time < (i + 1) * self.rf_period)
 
@@ -231,20 +231,20 @@ class SimulatedBeamPhase:
         time_shift = (int(time_frame[0] * omega_rf / (2 * np.pi)) + 1)
         bunch_ind = 0
 
-        for i in range(n_buckets):
-            # Compute center of RF bucket
-            bucket_center = self.rf_tracker.rf_params.bucket_center(i + time_shift)
+        # Pre-compute bucket centers
+        bucket_centers = self.rf_tracker.rf_params.bucket_center(np.arange(n_buckets) + time_shift)
 
-            # Creating the mask for rf bucket i
-            left_side = bucket_center - rf_period/2
-            right_side = bucket_center + rf_period/2
-            mask_i = (time_frame > left_side) & (time_frame < right_side)
-
-            # Get time coordinates of bucket i
-            time_bucket = time_frame[mask_i]
+            # Create masks for all buckets
+        left_sides = bucket_centers - rf_period / 2
+        right_sides = bucket_centers + rf_period / 2
+        masks = [(time_frame > left) & (time_frame < right) for left, right in zip(left_sides, right_sides)]
+        
+        for mask in masks:
+            # Get time coordinates of bucket
+            time_bucket = time_frame[mask]
 
             # Get profile measurement for bucket i
-            frame_bucket = normalized_profile[mask_i]
+            frame_bucket = normalized_profile[mask]
 
             # Check if there is beam in the bucket
             if np.sum(frame_bucket) > no_beam_thres:
