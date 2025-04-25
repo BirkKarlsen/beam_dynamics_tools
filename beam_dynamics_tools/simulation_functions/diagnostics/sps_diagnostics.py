@@ -33,6 +33,8 @@ class SPSDiagnostics(Diagnostics):
             self.perform_measurements = getattr(self, 'standard_measurement')
         elif setting == 1:
             self.perform_measurements = getattr(self, 'feedforward_measurement')
+        elif setting == 2:
+            self.perform_measurements = getattr(self, 'fast_measurement')
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
 
@@ -142,3 +144,27 @@ class SPSDiagnostics(Diagnostics):
         plt.clf()
         plt.cla()
         plt.close()
+
+    def fast_measurement(self):
+        r'''Fast measurements done in SPS simulations.'''
+
+        # Setting up arrays on initial track call
+        if self.turn == 0:
+            pass
+
+        # Line density measurement
+        if self.turn % self.dt_ld == 0:
+            self.line_density_measurement()
+            self.ind_ld += 1
+
+        # Gather signals which are frequently sampled
+        if self.turn % self.dt_cont == 0:
+            self.beam_frequent_measurements()
+            self.bunch_losses[self.ind_cont, :] = self.bunch_intensities[0, :] - \
+                                                  self.bunch_intensities[self.ind_cont, :]
+
+            self.ind_cont += 1
+
+        # Gather beam based measurements, save plots and save data
+        if self.turn % self.dt_beam == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
+            self.beam_infrequent_measurements(plot=False)

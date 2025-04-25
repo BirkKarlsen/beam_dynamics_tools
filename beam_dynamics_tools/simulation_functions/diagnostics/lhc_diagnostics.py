@@ -27,8 +27,10 @@ class LHCDiagnostics(Diagnostics):
                  n_bunches, injection_scheme, setting=0, dt_cont=1, dt_beam=1000, dt_cl=1000, dt_prfl=500,
                  dt_ld=25):
 
-        super().__init__(RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
-                 n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl, dt_ld=dt_ld)
+        super().__init__(
+            RingAndRFTracker, Profile, TotalInducedVoltage, LHCCavityLoop, Ring, save_to, get_from,
+            n_bunches, dt_cont=dt_cont, dt_beam=dt_beam, dt_cl=dt_cl, dt_prfl=dt_prfl, dt_ld=dt_ld
+        )
 
         # Beam
         self.turns_after_injection = 0
@@ -45,6 +47,11 @@ class LHCDiagnostics(Diagnostics):
             inj += 1
         self.init_beam_measurements()
 
+        # Redefine 
+        self.phase_measurement.__init__(
+            Profile, RingAndRFTracker, n_bunches=self.n_bunches, n_bunches_init=n_bunches
+        )
+
         # LLRF
         if LHCCavityLoop is None:
             self.init_cl = getattr(self, 'empty_measurement')
@@ -53,7 +60,7 @@ class LHCDiagnostics(Diagnostics):
             self.inj_power = getattr(self, 'empty_measurement')
         else:
             self.init_cl = self.init_cavity_loop_measurements
-            self.cl_infreq_meas = self.cavity_loop_infrequency_measurements
+            self.cl_infreq_meas = self.cavity_loop_infrequent_measurements
             self.cl_freq_meas = self.cavity_loop_frequent_measurements
             self.inj_power = self.injection_power_transient_measurement
 
@@ -63,13 +70,15 @@ class LHCDiagnostics(Diagnostics):
             self.perform_measurements = getattr(self, 'standard_measurement')
         elif setting == 1:
             self.perform_measurements = getattr(self, 'measurement_with_injection')
+        elif setting == 2:
+            self.perform_measurements = getattr(self, 'measurement_with_injection_fast')
         else:
             self.perform_measurements = getattr(self, 'empty_measurement')
 
-    def injection(self, beam_ID, bucket, simulated):
+    def injection(self, beam_ID, bucket, simulated, phase_error=0, energy_error=0):
         r'''Injection of beam from the SPS into the LHC.'''
 
-        if beam_ID == "no injections":
+        if beam_ID == "no injections/":
             pass
         else:
             # import beam
@@ -86,6 +95,13 @@ class LHCDiagnostics(Diagnostics):
                               self.tracker.rf_params.omega_rf[:, self.tracker.counter[0]]
 
             injected_beam[0, :] = injected_beam[0, :] - sps_lhc_dt + lhc_bucket_dt + phase_offset_dt
+
+            # Include injection errors
+            # Phase errors
+            injected_beam[0, :] = injected_beam[0, :] + phase_error / 360 \
+                * self.tracker.rf_params.t_rf[:, self.tracker.counter[0]]
+            # Energy errors
+            injected_beam[1, :] = injected_beam[1, :] + energy_error * 1e6
 
             # Add macroparticles to beam class
             self.tracker.beam += injected_beam
@@ -136,12 +152,13 @@ class LHCDiagnostics(Diagnostics):
         r'''Frequent single-turn-single-value measurements'''
         self.max_power[self.ind_cont] = np.max(self.cl.generator_power()[-self.cl.n_coarse:])
 
-    def cavity_loop_infrequency_measurements(self):
+    def cavity_loop_infrequent_measurements(self, plot=True):
         r'''Infrequent single-turn-multi-value measurements'''
         # Plot
-        pcs.plot_generator_power(self.cl, self.turn, self.save_to + 'figures/')
-        pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to + 'figures/')
-        pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
+        if plot:
+            pcs.plot_generator_power(self.cl, self.turn, self.save_to + 'figures/')
+            pcs.plot_cavity_voltage(self.cl, self.turn, self.save_to + 'figures/')
+            pcs.plot_max_power(self.max_power, self.time_turns, self.ind_cont - 1, self.save_to + 'figures/')
 
         # Save
         np.save(self.save_to + 'data/' + f'gen_power_{self.turn}.npy',
@@ -277,3 +294,74 @@ class LHCDiagnostics(Diagnostics):
         plt.clf()
         plt.cla()
         plt.close()
+
+    def measurement_with_injection_fast(self):
+        r'''Injection of beams and measurements.'''
+
+        # Injection of different beams into the LHC.
+        if self.injection_number < len(self.injection_keys) and \
+                self.turn == self.injection_scheme[self.injection_keys[self.injection_number]][1]:
+            
+            # Loading parameters
+            beam_ID = self.injection_keys[self.injection_number] + '/'
+            bucket = self.injection_scheme[self.injection_keys[self.injection_number]][0]
+            simulated = bool(self.injection_scheme[self.injection_keys[self.injection_number]][2])
+            inj_bunches = int(self.injection_scheme[self.injection_keys[self.injection_number]][3])
+            phase_err = float(self.injection_scheme[self.injection_keys[self.injection_number]][4])
+            energy_err = float(self.injection_scheme[self.injection_keys[self.injection_number]][5])
+
+            # Update phase measurement
+            self.phase_measurement.set_number_of_bunches(
+                self.phase_measurement.n_bunches + inj_bunches
+            )
+
+            self.injection(
+                beam_ID, bucket=bucket, simulated=simulated,
+                phase_error=phase_err, energy_error=energy_err
+            )
+            print(f'Injected {beam_ID} in bucket {bucket}!')
+
+            self.uncaptured_beam = self.measure_uncaptured_losses()
+            loss_dict = {f'Uncaptured losses {self.injection_number}': self.uncaptured_beam}
+            ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
+
+        # Setting up arrays on initial track call
+        if self.turn == 0:
+            print(f'Found {self.n_bunches} to be injected in total')
+
+            self.uncaptured_beam = self.measure_uncaptured_losses()
+
+            loss_dict = {f'Uncaptured losses {self.injection_number}': self.uncaptured_beam}
+            ida.make_and_write_yaml('loss_summary.yaml', self.save_to, loss_dict)
+
+        # Line density measurement
+        if self.turn % self.dt_ld == 0 and self.ind_ld < self.n_ld:
+            self.line_density_measurement()
+            self.ind_ld += 1
+
+        # Gather signals which are frequently sampled
+        if self.turn % self.dt_cont == 0 and self.ind_cont < self.n_cont:
+            self.cl_freq_meas()
+            self.beam_frequent_measurements()
+            self.bunch_losses[self.ind_cont, :] = self.measure_slow_losses()
+
+            self.ind_cont += 1
+
+        # Gather beam based measurements, save plots and save data
+        if self.turn % self.dt_beam == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
+            self.beam_infrequent_measurements(plot=False)
+
+            if self.turn == self.tracker.rf_params.n_turns - 1:
+                loss_dict = {'Losses after ramp': self.measure_ramp_losses()}
+                ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
+
+                loss_dict = {'End of simulation losses (separatrix)': self.measure_uncaptured_losses()}
+                ida.write_to_yaml('loss_summary.yaml', self.save_to, loss_dict)
+
+        # Gather cavity based measurements, save plots and save data
+        if self.turn % self.dt_cl == 0 or self.turn == self.tracker.rf_params.n_turns - 1:
+            self.cl_infreq_meas(plot=False)
+
+        if self.turns_after_injection >= 0 and self.turns_after_injection < 500:
+            self.inj_power()
+            self.turns_after_injection += 1
