@@ -4,12 +4,14 @@ Script to get beam phase from profile measurements with the high-resolution scop
 Author: Birk Emil Karlsen-Bæck
 '''
 
+from typing import TYPE_CHECKING
 import numpy as np
 import h5py
 from blond.trackers.tracker import RingAndRFTracker
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.constants import c, e, proton_mass
+from scipy.signals import find_peaks
 
 import blond.utils.bmath as bm
 
@@ -20,11 +22,32 @@ relativistic_beta = lambda gamma: np.sqrt(1 - 1 / gamma ** 2)
 
 from blond.beam.profile import Profile
 
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
 
 # Beam-phase calculation from BLonD
-def beam_phase(bin_centers: np.ndarray, profile: np.ndarray,
-               alpha: float, omegarf: float,
-               phirf: float, bin_size: float) -> float:
+def beam_phase(
+        bin_centers: NDArray, profile: NDArray,
+        alpha: float, omegarf: float,
+        phirf: float, bin_size: float
+    ) -> float:
+    """Function to estimate the beam phase for a given rf frequency based on a beam profile.
+
+    Args:
+        bin_centers (NDArray):
+            The time series associated with the profile.
+        profiles (NDArray):
+            The profile measurement.
+        alpha (float):
+            The filter coefficient for the phase estimate.
+        omegarf (float):
+            The angular rf frequency at which to calculate the bunch phase.
+        phirf (float):
+            The instantaneous rf phase.
+        bin_size (float):
+            The time interval between each profile sample.
+    """
     scoeff = np.trapezoid(
         np.exp(alpha * (bin_centers))
         * np.sin(omegarf * bin_centers + phirf)
@@ -39,11 +62,122 @@ def beam_phase(bin_centers: np.ndarray, profile: np.ndarray,
     return scoeff / ccoeff
 
 
-class MeasuredBeamPhase:
+def moving_average(x: NDArray, w: int = 20):
+    """Convolution-based moving average.
 
-    def __init__(self, profiles, sampling: float = 40e9, beam_momentum: float = 450e9,
-                 n_bunches: int = 1, time_shift: int = 0, jitter: np.ndarray = None,
-                 alpha: float = 0, C: float = 26658.883, h: int = 35640, phi_rf: float = 0) -> None:
+    Args:
+        x (NDArray):
+            Signal to perform moving average on.
+        w (int):
+            Number of samples to average over.
+
+    Returns:
+        result (NDArray):
+            Signal with moving average.
+    """
+    return np.convolve(x, np.ones(w), 'valid') / w
+
+
+def detect_zero_phase(profile: NDArray, n_samples_per_bucket: int, amplitude_tol: float = 0.5):
+    """Algorithm to auto-detect the zero phase of the profile measurement.
+
+    Args:
+        profile (NDArray):
+            1D array with reference profile measurement.
+        n_samples_per_bucket (int):
+            Number of profile samples per bucket.
+        amplitude_tol (float):
+            The amplitude tolerance to discriminate bunches from noise.
+
+    Returns:
+        zero_phase (int):
+            The index of the zero-phase of the profile measurement.
+    """
+
+    # Maximum of profile to get the
+    height_threshold = np.max(profile) * amplitude_tol
+
+    # Find first bunch using find_peaks
+    peaks, _ = find_peaks(profile, height=height_threshold, distance=n_samples_per_bucket)
+
+    return peaks[0] - round(n_samples_per_bucket / 2)
+
+
+class MeasuredBeamPhase:
+    """Class to estimate the beam phase for a given harmonic based on beam profiles.
+
+    Args:
+        profiles (NDArray):
+            The profile to estimate the beam phase from. The first axis is along a single turn while
+            the second axis turn-by-turn.
+        sampling (float):
+            The sampling [# samples / s] of the measurement.
+        beam_momentum (float):
+            The beam momentum [eV / c] the profile was measured at.
+        n_bunches (int):
+            The number of expected bunches.
+        sample_correction (int):
+            The shift along turn [# samples] to find the zero phase of the rf wave.
+        jitter (NDArray):
+            A 1D array of jitter correction [s] from the scope.
+        alpha (float):
+            The filter coefficient to estimate the beam phase.
+        C (float):
+            The circumference [m] of the accelerator.
+        h (int):
+            The harmonic to measure the beam phase at.
+        phi_rf (float):
+            The phase [rad] of the rf system relative to the start of the turn.
+        auto_detect_rf_phase (bool):
+            Flag to enable algorthm to automatically detect the correct zero phase of the rf system
+            relative to the profile measurement. The ``sample_correction`` will be a correction
+            on top of what the algorithm finds.
+
+    Attributes:
+        alpha (float):
+            The filter coefficient to estimate the beam phase.
+        C (float):
+            The circumference [m] of the accelerator.
+        h (int):
+            The harmonic to measure the beam phase at.
+        phi_rf (float):
+            The phase [rad] of the rf system relative to the start of the turn.
+        omega_rf (float):
+            The angular rf frequency [rad / s] corresponding to the given harmonic.
+        rf_period (float):
+            The period of the rf system [s].
+        profile (NDArray):
+            The profile to estimate the beam phase from. The first axis is along a single turn while
+            the second axis turn-by-turn.
+        sampling (float):
+            The sampling [# samples / s] of the measurement.
+        n_records (int):
+            The number of records, i.e. frames, to analyse.
+        record_length (int):
+            The length of each frame [# samples].
+        jitter (NDArray):
+            A 1D array of jitter correction [s] from the scope.
+        beam_phases (NDArray):
+            The calculated beam phases [deg.].
+        full_time (NDArray):
+            The time array along a single turn [s].
+
+    """
+
+    def __init__(
+            self,
+            profiles: NDArray,
+            sampling: float = 40e9,
+            beam_momentum: float = 450e9,
+            n_bunches: int = 1,
+            sample_correction: int = 0,
+            jitter: NDArray = None,
+            alpha: float = 0,
+            C: float = 26658.883,
+            h: int = 35640,
+            phi_rf: float = 0,
+            auto_detect_rf_phase: bool = False
+        ):
 
         # Parameters
         self.alpha = alpha
@@ -59,6 +193,17 @@ class MeasuredBeamPhase:
 
         self.omega_rf = 2 * np.pi * self.h * f_rev
         self.rf_period = 2 * np.pi / self.omega_rf
+        self.rf_period_samples = round(self.rf_period * sampling)
+
+        if auto_detect_rf_phase:
+            detected_zero_phase = self.detect_zero_phase(
+                profiles[:, 0],
+                self.rf_period_samples,
+            )
+        else:
+            detected_zero_phase = 0
+
+        sample_correction += detected_zero_phase
 
         # Fetch all relevant parameters for the analysis
         # Beam line-density
@@ -68,9 +213,9 @@ class MeasuredBeamPhase:
         # The number of frames acquired
         self.n_records = self.profile.shape[1]
         # The length of the frames
-        self.record_length = self.profile.shape[0] - time_shift
+        self.record_length = self.profile.shape[0] - sample_correction
 
-        self.profile = self.profile[time_shift:, :]
+        self.profile = self.profile[sample_correction:, :]
 
         # Jitter corrections
         if jitter is not None:
@@ -129,58 +274,94 @@ class MeasuredBeamPhase:
 
     @staticmethod
     def moving_average(x: np.ndarray, w: int = 20):
-        return np.convolve(x, np.ones(w), 'valid') / w
+        return moving_average(x=x, w=w)
+
+    @staticmethod
+    def detect_zero_phase(profile: NDArray, n_samples_per_bucket: int, amplitude_tol: float = 0.5):
+        return detect_zero_phase(
+            profile=profile,
+            n_samples_per_bucket=n_samples_per_bucket,
+            amplitude_tol=amplitude_tol
+        )
 
 
 class PSExtractionBeamPhase(MeasuredBeamPhase):
 
-    def __init__(self, profiles, sampling: float = 40e9, beam_momentum: float = 26e9, n_bunches: int = 1,
-                 time_shift: int = 0, harmonic: int = 168, jitter=None):
+    def __init__(
+            self,
+            profiles: NDArray,
+            sampling: float = 40e9,
+            beam_momentum: float = 26e9,
+            n_bunches: int = 1,
+            time_shift: int = 0,
+            harmonic: int = 168,
+            jitter: NDArray = None,
+            auto_detect_rf_phase: bool = False
+        ):
         super().__init__(
             profiles, sampling, beam_momentum, n_bunches, time_shift, jitter,
-            alpha=0, C=628.3185, h=harmonic, phi_rf=0
+            alpha=0, C=628.3185, h=harmonic, phi_rf=0,
+            auto_detect_rf_phase=auto_detect_rf_phase
         )
 
 
 class SPSBeamPhase(MeasuredBeamPhase):
 
-    def __init__(self, profiles, sampling: float = 40e9, beam_momentum: float = 450e9, n_bunches: int = 1,
-                 time_shift: int = 0, jitter=None):
+    def __init__(
+            self,
+            profiles: NDArray,
+            sampling: float = 40e9,
+            beam_momentum: float = 450e9,
+            n_bunches: int = 1,
+            time_shift: int = 0,
+            jitter: NDArray = None,
+            auto_detect_rf_phase: bool = False
+        ):
         super().__init__(
             profiles, sampling, beam_momentum, n_bunches, time_shift, jitter,
-            alpha=0, C=6911.560, h=4620, phi_rf=0
+            alpha=0, C=6911.560, h=4620, phi_rf=0,
+            auto_detect_rf_phase=auto_detect_rf_phase
         )
 
 
 class LHCBeamPhase(MeasuredBeamPhase):
 
-    def __init__(self, profiles, sampling: float = 40e9, beam_momentum: float = 450e9, n_bunches: int = 1,
-                 time_shift: int = 0, jitter=None):
+    def __init__(
+            self,
+            profiles: NDArray,
+            sampling: float = 40e9,
+            beam_momentum: float = 450e9,
+            n_bunches: int = 1,
+            time_shift: int = 0, 
+            jitter: NDArray = None,
+            auto_detect_rf_phase: bool = False
+        ):
         super().__init__(
             profiles, sampling, beam_momentum, n_bunches, time_shift, jitter,
-            alpha=0, C=26658.883, h=35640, phi_rf=0
+            alpha=0, C=26658.883, h=35640, phi_rf=0,
+            auto_detect_rf_phase=auto_detect_rf_phase
         )
 
 
 class SimulatedBeamPhase:
+    """Class to analyze the beam phase turn by turn in BLonD simulations.
+
+    Args:
+        profile (Profile):
+            BLonD profile object with the beam information.
+        rf_tracker (RingAndRFTracker):
+            BLonD ring and rf tracker with the RF phase and frequency information.
+        n_bunches (int):
+            The total number of bunches in the ring and which are covered by the profile object.
+            Default value is 1 bunch.
+        n_bunches_init (int):
+            In the case of a changing number of bunches during the simulation due to injections,
+            you can specify the initial number of bunches in your simulation. The variable is None by the default
+            and will therefore be the same value as n_bunches.
+    """
 
     def __init__(self, profile: Profile, rf_tracker: RingAndRFTracker,
                  n_bunches: int = 1, n_bunches_init: int = None) -> None:
-        """Class to analyze the beam phase turn by turn in BLonD simulations.
-
-        Args:
-            profile (Profile):
-                BLonD profile object with the beam information.
-            rf_tracker (RingAndRFTracker):
-                BLonD ring and rf tracker with the RF phase and frequency information.
-            n_bunches (int):
-                The total number of bunches in the ring and which are covered by the profile object.
-                Default value is 1 bunch.
-            n_bunches_init (int):
-                In the case of a changing number of bunches during the simulation due to injections,
-                you can specify the initial number of bunches in your simulation. The variable is None by the default
-                and will therefore be the same value as n_bunches.
-        """
 
         self.profile = profile
         self.rf_tracker = rf_tracker
