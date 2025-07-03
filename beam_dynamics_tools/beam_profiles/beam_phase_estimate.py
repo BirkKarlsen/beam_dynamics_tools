@@ -11,7 +11,7 @@ from blond.trackers.tracker import RingAndRFTracker
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.constants import c, e, proton_mass
-from scipy.signals import find_peaks
+from scipy.signal import find_peaks
 
 import blond.utils.bmath as bm
 
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 # Beam-phase calculation from BLonD
 def beam_phase(
-        bin_centers: NDArray, profile: NDArray,
+        bin_centers: NDArray[float], profile: NDArray[float],
         alpha: float, omegarf: float,
         phirf: float, bin_size: float
     ) -> float:
@@ -62,7 +62,7 @@ def beam_phase(
     return scoeff / ccoeff
 
 
-def moving_average(x: NDArray, w: int = 20):
+def moving_average(x: NDArray[float | complex], w: int = 20):
     """Convolution-based moving average.
 
     Args:
@@ -78,7 +78,7 @@ def moving_average(x: NDArray, w: int = 20):
     return np.convolve(x, np.ones(w), 'valid') / w
 
 
-def detect_zero_phase(profile: NDArray, n_samples_per_bucket: int, amplitude_tol: float = 0.5):
+def detect_zero_phase(profile: NDArray[float], n_samples_per_bucket: int, amplitude_tol: float = 0.5):
     """Algorithm to auto-detect the zero phase of the profile measurement.
 
     Args:
@@ -166,7 +166,7 @@ class MeasuredBeamPhase:
 
     def __init__(
             self,
-            profiles: NDArray,
+            profiles: NDArray[float],
             sampling: float = 40e9,
             beam_momentum: float = 450e9,
             n_bunches: int = 1,
@@ -231,7 +231,7 @@ class MeasuredBeamPhase:
             self.record_length
         )
 
-    def analyse_bunch(self, single_profile: np.ndarray, time_array: np.ndarray, bunch_number: int) -> None:
+    def analyse_bunch(self, single_profile: NDArray[float], time_array: NDArray[float], bunch_number: int) -> None:
 
         for i in range(self.beam_phases.shape[1]):
             # Remove the offset
@@ -245,7 +245,7 @@ class MeasuredBeamPhase:
             )
             self.beam_phases[bunch_number, i] = np.arctan(coeff)
 
-    def analyse_measurement(self, no_beam_thres: float = 20) -> np.ndarray:
+    def analyse_measurement(self, no_beam_thres: float = 20) -> NDArray:
 
         bunch_ind = 0
 
@@ -273,7 +273,7 @@ class MeasuredBeamPhase:
         return sample_number / sample_number * self.omega_rf + self.phi_rf
 
     @staticmethod
-    def moving_average(x: np.ndarray, w: int = 20):
+    def moving_average(x: NDArray, w: int = 20):
         return moving_average(x=x, w=w)
 
     @staticmethod
@@ -332,7 +332,7 @@ class LHCBeamPhase(MeasuredBeamPhase):
             sampling: float = 40e9,
             beam_momentum: float = 450e9,
             n_bunches: int = 1,
-            time_shift: int = 0, 
+            time_shift: int = 0,
             jitter: NDArray = None,
             auto_detect_rf_phase: bool = False
         ):
@@ -381,7 +381,7 @@ class SimulatedBeamPhase:
         """
         self.n_bunches_current = new_number_of_bunches
 
-    def extract_phases(self, no_beam_thres: float = 0.5) -> np.ndarray[float]:
+    def extract_phases(self, no_beam_thres: float = 0.5) -> NDArray[float]:
         """Method to extract the beam phases from the BLonD profile object associated with the instance of
         this class.
 
@@ -438,7 +438,7 @@ class SimulatedBeamPhase:
         return self.bunch_phases * 180 / np.pi
 
     @staticmethod
-    def analyse_bunch(single_profile: np.ndarray[float], time_array: np.ndarray[float], omega_rf: float,
+    def analyse_bunch(single_profile: NDArray[float], time_array: NDArray[float], omega_rf: float,
                       phi_rf: float, bin_size: float) -> float:
         """Method to compute the beam phase.
 
