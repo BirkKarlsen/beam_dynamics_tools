@@ -282,7 +282,6 @@ def sort_sps_profiles(files):
     return files
 
 
-
 def sort_measurements(files, sort_by):
     r'''
     Sorts measurements by the output number given by the sort_by function.
