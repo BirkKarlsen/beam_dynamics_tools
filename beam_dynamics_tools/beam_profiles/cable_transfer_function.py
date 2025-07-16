@@ -7,6 +7,21 @@ Author: Birk Emil Karlsen-Baeck, Danilo Quartullo
 import numpy as np
 import h5py
 import os
+import pandas as pd
+
+
+def raised_cosine_filter(cutoff_left, cutoff_right, freq_tf):
+    H_RC = np.zeros(len(freq_tf))
+    index_inbetween = np.where((freq_tf <= cutoff_right) & (freq_tf >= cutoff_left))[0]
+    index_before = np.where(freq_tf < cutoff_left)[0]
+    index_after = np.where(freq_tf > cutoff_right)[0]
+
+    H_RC[index_before] = 1
+    H_RC[index_after] = 0
+    H_RC[index_inbetween] = (1 + np.cos(
+        np.pi / (cutoff_right - cutoff_left) * (freq_tf[index_inbetween] - cutoff_left))) / 2
+
+    return H_RC
 
 
 def set_profile_reference(profiles, new_reference=0, sample=25):
@@ -106,7 +121,14 @@ def sps_cable_tranfer_function(profile_time, profile_current, year: int = 2021):
     return CTF_profile
 
 
-def apply_sps_cable_tf(profile, t, extend: float = 100e-9, year: int = 2021):
+def apply_sps_cable_tf(
+        profile,
+        t,
+        extend: float = 100e-9,
+        year: int = 2021,
+        raised_cos_filter: bool = False,
+        apply_pickup: bool = False,
+    ):
     tf_dir = f'../transfer_functions/'
     profile = set_profile_reference(profile, new_reference=0, sample=25)
     dt = t[1] - t[0]
@@ -126,15 +148,57 @@ def apply_sps_cable_tf(profile, t, extend: float = 100e-9, year: int = 2021):
     
     tf_array = data['transfer']
     freq_array = data['freqArray']
+
+    # Apply pick up transfer function
+    if apply_pickup:
+        # Extend the pick up from 6 GHz to 10 GHz
+        TF_pickup_data = pd.read_csv(
+            dir_fil + 'tf-apwl10-sig8v4.dat', sep="\s+",
+            skiprows=4, names=['Freq. [Hz]', 'Re', 'Im']
+        )
+
+        TF_pickup_freq = TF_pickup_data['Freq. [Hz]'].to_numpy()
+        TF_pickup_array = (TF_pickup_data['Re'].to_numpy() + TF_pickup_data['Im'].to_numpy() * 1j)
+
+        freq_step = TF_pickup_freq[1] - TF_pickup_freq[0]
+        additional_points = int(np.ceil((10e9 - TF_pickup_freq[-1]) / freq_step))
+        new_freq = np.linspace(TF_pickup_freq[-1] + freq_step, 10e9, additional_points, endpoint=True)
+
+        new_TF_pickup_array = np.full_like(new_freq, TF_pickup_array[-1].real) \
+                              + 1j * np.full_like(new_freq, TF_pickup_array[-1].imag)
+
+        extended_TF_pickup_freq = np.concatenate((TF_pickup_freq, new_freq))
+        extended_TF_pickup_array = np.concatenate((TF_pickup_array, new_TF_pickup_array))
+
+        tf_pickup_fine = np.interp(
+            freq_array,
+            extended_TF_pickup_freq,
+            extended_TF_pickup_array.real
+        ) + 1j * np.interp(
+            freq_array,
+            extended_TF_pickup_freq,
+            extended_TF_pickup_array.imag
+        )
+
+        tf_array = tf_array * abs(tf_pickup_fine)
     
     tf = np.interp(freq, freq_array, tf_array.real) + \
          1j * np.interp(freq, freq_array, tf_array.imag)
 
+    if raised_cos_filter:
+        cutoff_left = 2.40e9  # CTF reliable up to 2.5 GHz
+        cutoff_right = 2.50e9
+        H_RC = raised_cosine_filter(cutoff_left, cutoff_right, freq)
+
     # Remove zeros in high-frequencies
-    tf[tf == 0] = 1.0 + 0j
+    #tf[tf == 0] = 1.0 + 0j
 
     # Deconvolution
     filtered_f = np.fft.rfft(profile, n=noints) / tf
+
+    if raised_cos_filter:
+        filtered_f = filtered_f * H_RC
+
     filtered = np.fft.irfft(filtered_f).real
     filtered -= filtered[:10].mean()
     return filtered[:init_length], t[:init_length]
