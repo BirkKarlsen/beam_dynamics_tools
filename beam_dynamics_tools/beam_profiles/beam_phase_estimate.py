@@ -4,7 +4,6 @@ Script to get beam phase from profile measurements with the high-resolution scop
 Author: Birk Emil Karlsen-Bæck
 '''
 
-from typing import TYPE_CHECKING
 import numpy as np
 import h5py
 from blond.trackers.tracker import RingAndRFTracker
@@ -22,8 +21,7 @@ relativistic_beta = lambda gamma: np.sqrt(1 - 1 / gamma ** 2)
 
 from blond.beam.profile import Profile
 
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
+from numpy.typing import NDArray
 
 
 # Beam-phase calculation from BLonD

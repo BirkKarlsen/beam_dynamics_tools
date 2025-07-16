@@ -120,12 +120,16 @@ def get_beam_pattern(profiles, t, height_factor=0.015, distance=500, n_bunch_max
             x = t[v - fit_window: v + fit_window]
             y = frame[v - fit_window: v + fit_window]
 
-            (mu, sigma, amp) = fwhm(x, y, level=0.5)
+            try:
+                (mu, sigma, amp) = fwhm(x, y, level=0.5)
+            except:
+                print(f'Something went wrong with bunch {j} at turn {i}...')
+                mu, sigma, amp = 0, 0, 0
 
             bunch_lengths[i, j] = 4 * sigma
             bunch_positions[i, j] = mu
             bunch_peaks[i, j] = amp
-            bunch_peak_position[i, j] = peak_position(x, y, level=0.5)
+            #bunch_peak_position[i, j] = peak_position(x, y, level=0.5)
             bunch_intensities[i, j] = intensity(y)
 
     n_bunch_max = np.max(n_bunches)
