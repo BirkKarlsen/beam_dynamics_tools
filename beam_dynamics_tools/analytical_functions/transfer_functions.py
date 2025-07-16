@@ -56,7 +56,7 @@ def H_otfb(f, g_otfb, alpha, tau_ac, tau_comp, t_rev):
     h_ac = lambda s: tau_ac * s / (1 + tau_ac * s)
 
     # Complimentary delay
-    h_comp = lambda s: np.exp(-tau_comp * s)
+    h_comp = lambda s: np.exp(tau_comp * s)
 
     # Laplace space coordinate
     s_ = 1j * 2 * np.pi * f
@@ -83,7 +83,7 @@ def Z_cav(f, df=0, f_rf=400.789e6, R_over_Q=45, Q_L=20000):
     return R_over_Q * Q_L / (1 + 2 * Q_L * (s - 1j * domega)/omega_rf)
 
 
-def H_cl(f, H_a, H_d, Z_cav, tau_loop=1.2e-6):
+def H_cl(f, H_a, H_d, Z_cav, tau_loop=1.2e-6, H_otfb=None):
     r'''Closed loop response of the LHC Cavity Loop without OTFB.
 
     :param f: frequency to evaluate the function at [Hz]
@@ -93,7 +93,11 @@ def H_cl(f, H_a, H_d, Z_cav, tau_loop=1.2e-6):
     :param Z_cav: LHC Cavity transfer function at f [ohm]
     :return: Complex value of the transfer at f
     '''
-    H_ad = H_a + H_d
+    if H_otfb is None:
+        H_ad = H_a + H_d
+    else:
+        H_ad = H_a * (H_otfb + 1) + H_d
+
     s = 1j * 2 * np.pi * f
     return 2 * np.exp(-tau_loop * s) * H_ad * Z_cav / (1 + 2 * np.exp(-tau_loop * s) * H_ad * Z_cav)
 
