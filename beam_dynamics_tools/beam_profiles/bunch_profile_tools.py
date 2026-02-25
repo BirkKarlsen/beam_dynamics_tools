@@ -9,6 +9,7 @@ import h5py
 from scipy.interpolate import interp1d, InterpolatedUnivariateSpline
 from scipy.signal import find_peaks
 from scipy.stats import linregress
+from scipy.optimize import curve_fit
 import os
 
 from blond_common.fitting.profile import binomial_amplitudeN_fit, FitOptions
@@ -16,6 +17,7 @@ from blond_common.interfaces.beam.analytic_distribution import binomialAmplitude
 
 from beam_dynamics_tools.beam_profiles.cable_transfer_function import apply_lhc_cable_tf
 from beam_dynamics_tools.signal_analysis.measured_signals import fit_sin
+from beam_dynamics_tools.analytical_functions.longitudinal_distributions import binomial_line_density_exact_4sigma
 
 
 def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_max=3564,
@@ -231,19 +233,24 @@ def extract_bunch_parameters(time, profile, heighFactor=0.015, wind_len=10, dist
             return Bunch_positionsFit[0, max_ind], Bunch_lengths[0, max_ind], Bunch_intensities[0, max_ind]
 
 
-def find_offset(pos):
+def find_offset(pos, manual_frequency: float = None):
     r'''
     Takes in an array of bunch positions and does a linear regression of them.
     The bunch-by-bunch offset is then calculated by taking the difference between the two.
     :param pos: numpy-array - Ordered list of bunch positions in time
     :return: numpy-array of the bunch-by-bunch offset
     '''
-    x = np.linspace(0, len(pos), len(pos))
+    if manual_frequency is None:
+        x = np.arange(len(pos))
 
-    sl, inter, pval, rval, err = linregress(x, pos)
-    fit_line = sl * x + inter
+        sl, inter, pval, rval, err = linregress(x, pos)
+        fit_line = sl * x + inter
+        offset_fit = pos - fit_line
+    else:
+        x = np.round(pos * manual_frequency)
+        offset_fit = pos - x / manual_frequency
+        offset_fit = offset_fit - np.mean(offset_fit)
 
-    offset_fit = pos - fit_line
     return offset_fit
 
 
@@ -669,3 +676,69 @@ def find_beamline_from_shot(file):
         n_sl = 0
 
     return int(file[-(1 + n_sl)])
+
+
+def fit_exact_binomial_line_density(
+        x_measure: np.ndarray,
+        y_measure: np.ndarray,
+        guess: list,
+        omega_rf: float,
+        tau_method: str = 'fit'
+):
+    '''Fits a line density measurement to a binomial function.
+
+    The line density function takes into account the non-linear part of the
+    RF potential, but does not include potential-well distortion.
+    The length of the bunch can either be obtained directly from the fit
+    or from the full width at half the maximum of the line density.
+
+    Parameters
+    ----------
+    x_measure
+        Time array [s] of the beam profile measurement.
+    y_measure
+        The array corresponding to the profile measurement [arb. units].
+    guess
+        List of initial guesses for the parameters to be fitted.
+    omega_rf
+        The RF angular frequency of the RF potential.
+    tau_method
+        String which is either fit or fwhm.
+
+    Returns
+    -------
+    popt
+        Array of the parameters obtained from the fit, i.e. binomial mu,
+        position [s], and 4sigma equivalent bunch length [s].
+
+    Notes
+    -----
+        This function only works for single bunches.
+    '''
+
+    # Find normalization factor to simplify the fit
+    norm = np.max(y_measure)
+
+    # Choose method to fit the bunch length
+    if tau_method == 'fit':
+        # Define function to be fitted
+        func = lambda x, mu, pos, tau_b: binomial_line_density_exact_4sigma(
+            x, tau_b, mu, pos, omega_rf, norm=norm
+        )
+
+        # Perform the curve fit
+        popt, pcov = curve_fit(func, x_measure, y_measure, guess)
+    else:
+        # Get the 1sigma bunch length from FWHM
+        _, sigma, _ = fwhm(x_measure, y_measure)
+
+        # Function to be fitted when the bunch length is known
+        func = lambda x, mu, pos: binomial_line_density_exact_4sigma(
+            x, 4 * sigma, mu, pos, omega_rf, norm=norm
+        )
+
+        # Perform the curve fit and append the result from FWHM
+        popt, pcov = curve_fit(func, x_measure, y_measure, guess)
+        popt = np.append(popt, 4 * sigma)
+
+    return popt
