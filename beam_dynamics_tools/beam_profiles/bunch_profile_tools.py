@@ -11,11 +11,14 @@ from scipy.signal import find_peaks
 from scipy.stats import linregress
 from scipy.optimize import curve_fit
 import os
+import pandas as pd
+from datetime import datetime
 
 from blond_common.fitting.profile import binomial_amplitudeN_fit, FitOptions
 from blond_common.interfaces.beam.analytic_distribution import binomialAmplitudeN
 
-from beam_dynamics_tools.beam_profiles.cable_transfer_function import apply_lhc_cable_tf
+from beam_dynamics_tools.beam_profiles.cable_transfer_function import (
+    remove_lhc_cable_transfer_function, apply_lhc_cable_transfer_function)
 from beam_dynamics_tools.signal_analysis.measured_signals import fit_sin
 from beam_dynamics_tools.analytical_functions.longitudinal_distributions import binomial_line_density_exact_4sigma
 
@@ -52,7 +55,7 @@ def getBeamPattern(timeScale, frames, heightFactor=0.015, distance=500, N_bunch_
                 y = y - baseline
 
             if apply_tf:
-                y, x = apply_lhc_cable_tf(y, x * 1e-9, beam)
+                y, x = remove_lhc_cable_transfer_function(y, x * 1e-9, beam)
                 x *= 1e9
 
             if fit_option == 'fwhm':
@@ -683,7 +686,10 @@ def fit_exact_binomial_line_density(
         y_measure: np.ndarray,
         guess: list,
         omega_rf: float,
-        tau_method: str = 'fit'
+        tau_method: str = 'fit',
+        with_ctf: bool = False,
+        beam: int = 1,
+        sigma_measure: np.ndarray[float] = None
 ):
     '''Fits a line density measurement to a binomial function.
 
@@ -719,26 +725,245 @@ def fit_exact_binomial_line_density(
     # Find normalization factor to simplify the fit
     norm = np.max(y_measure)
 
+    if with_ctf:
+        def line_density_kernel(x, tau_b, mu, pos, omega_rf, norm=norm):
+            _prof = binomial_line_density_exact_4sigma(
+                x, tau_b, mu, pos, omega_rf, norm=norm
+            )
+            _prof_conv = apply_lhc_cable_transfer_function(
+                x, _prof, beam, raised_cos_filter=True
+            )
+            _prof_conv *= np.max(_prof) / np.max(_prof_conv)
+
+            return _prof_conv
+    else:
+        def line_density_kernel(x, tau_b, mu, pos, omega_rf, norm=norm):
+            _prof = binomial_line_density_exact_4sigma(
+                x, tau_b, mu, pos, omega_rf, norm=norm
+            )
+            return _prof
+
+
     # Choose method to fit the bunch length
     if tau_method == 'fit':
         # Define function to be fitted
-        func = lambda x, mu, pos, tau_b: binomial_line_density_exact_4sigma(
+        func = lambda x, mu, pos, tau_b: line_density_kernel(
             x, tau_b, mu, pos, omega_rf, norm=norm
         )
-
-        # Perform the curve fit
-        popt, pcov = curve_fit(func, x_measure, y_measure, guess)
     else:
         # Get the 1sigma bunch length from FWHM
         _, sigma, _ = fwhm(x_measure, y_measure)
 
         # Function to be fitted when the bunch length is known
-        func = lambda x, mu, pos: binomial_line_density_exact_4sigma(
+        func = lambda x, mu, pos: line_density_kernel(
             x, 4 * sigma, mu, pos, omega_rf, norm=norm
         )
 
-        # Perform the curve fit and append the result from FWHM
-        popt, pcov = curve_fit(func, x_measure, y_measure, guess)
+    # Perform the curve fit
+    if sigma_measure is not None:
+        popt, pcov = curve_fit(
+            func, x_measure, y_measure, guess,
+            absolute_sigma=True, sigma=sigma_measure
+        )
+    else:
+        popt, pcov = curve_fit(
+            func, x_measure, y_measure, guess,
+        )
+
+    if not tau_method == 'fit':
         popt = np.append(popt, 4 * sigma)
 
     return popt
+
+
+def fit_exact_binomial_line_density_old(
+        x_measure: np.ndarray,
+        y_measure: np.ndarray,
+        guess: list,
+        omega_rf: float,
+        tau_method: str = 'fit',
+        with_ctf: bool = False,
+        beam: int = 1,
+        sigma_measure: np.ndarray[float] = None
+):
+    '''Fits a line density measurement to a binomial function.
+
+    The line density function takes into account the non-linear part of the
+    RF potential, but does not include potential-well distortion.
+    The length of the bunch can either be obtained directly from the fit
+    or from the full width at half the maximum of the line density.
+
+    Parameters
+    ----------
+    x_measure
+        Time array [s] of the beam profile measurement.
+    y_measure
+        The array corresponding to the profile measurement [arb. units].
+    guess
+        List of initial guesses for the parameters to be fitted.
+    omega_rf
+        The RF angular frequency of the RF potential.
+    tau_method
+        String which is either fit or fwhm.
+
+    Returns
+    -------
+    popt
+        Array of the parameters obtained from the fit, i.e. binomial mu,
+        position [s], and 4sigma equivalent bunch length [s].
+
+    Notes
+    -----
+        This function only works for single bunches.
+    '''
+
+    # Find normalization factor to simplify the fit
+    norm = np.max(y_measure)
+
+    if with_ctf:
+        def line_density_kernel(x, tau_b, mu, pos, omega_rf, norm=norm):
+            _prof = binomial_line_density_exact_4sigma(
+                x, tau_b, mu, pos, omega_rf, norm=norm
+            )
+            _prof_conv = apply_lhc_cable_transfer_function(
+                x, _prof, beam, raised_cos_filter=True
+            )
+            _prof_conv *= np.max(_prof) / np.max(_prof_conv)
+
+            return _prof_conv
+    else:
+        def line_density_kernel(x, tau_b, mu, pos, omega_rf, norm=norm):
+            _prof = binomial_line_density_exact_4sigma(
+                x, tau_b, mu, pos, omega_rf, norm=norm
+            )
+            return _prof
+
+
+    # Choose method to fit the bunch length
+    if tau_method == 'fit':
+        # Define function to be fitted
+        func = lambda x, mu, pos, tau_b, norm, offset: line_density_kernel(
+            x, tau_b, mu, pos, omega_rf, norm=norm
+        ) + offset
+    else:
+        # Get the 1sigma bunch length from FWHM
+        _, sigma, _ = fwhm(x_measure, y_measure)
+
+        # Function to be fitted when the bunch length is known
+        func = lambda x, mu, pos: line_density_kernel(
+            x, 4 * sigma, mu, pos, omega_rf, norm=norm
+        )
+
+    # Perform the curve fit
+    if sigma_measure is not None:
+        popt, pcov = curve_fit(
+            func, x_measure, y_measure, guess,
+            absolute_sigma=True, sigma=sigma_measure
+        )
+    else:
+        popt, pcov = curve_fit(
+            func, x_measure, y_measure, guess,
+        )
+
+    if not tau_method == 'fit':
+        popt = np.append(popt, 4 * sigma)
+
+    return popt
+
+
+def extract_parameters_for_profile(filename: str):
+    """Extract beam number, bucket number, and timestamp from profile filename.
+
+    Args:
+        filename (str):
+            The profile filename in
+            the format 'PROFILE_B{beam}_b{bucket}_{timestamp}.h5'
+
+    Returns:
+        beam (int):
+            The beam number extracted from the filename.
+        bucket (int):
+            The bucket number extracted from the filename.
+        timestamp (datetime):
+            The timestamp extracted from the filename as a datetime object.
+    """
+    filename = filename.split('.')[0]
+    filename_ls = filename.split('_')
+
+    beam = int(filename_ls[1][1])
+    bucket = int(filename_ls[2][1:])
+    timestamp = datetime.strptime(filename_ls[3], '%Y%m%d%H%M%S')
+
+    return beam, bucket, timestamp
+
+
+def load_profile_data_folder_as_dataframe(
+        folder_path: str
+) -> pd.DataFrame:
+    """Load profile data from a folder into a pandas DataFrame.
+
+    Args:
+        folder_path (str):
+            The path to the folder containing profile files.
+
+    Returns:
+        pd.DataFrame:
+            A DataFrame containing beam number, bucket number,
+            and timestamp for each profile file.
+    """
+    profile_files = [
+        f for f in os.listdir(folder_path)
+        if f.startswith('PROFILE_') and f.endswith('.h5')
+    ]
+
+    data = []
+    for file in profile_files:
+        beam, bucket, timestamp = extract_parameters_for_profile(file)
+        data.append({
+            'filename': file,
+            'beam': beam,
+            'bucket': bucket,
+            'timestamp': timestamp
+        })
+
+    df = pd.DataFrame(data)
+    return df
+
+
+def read_measured_profile(profile_file: str):
+    """Read measured profile data from an HDF5 file.
+
+    Args:
+        profile_file (str):
+            The path to the HDF5 file containing profile data.
+
+    Returns:
+        raw_data (np.ndarray):
+            The raw profile data as a NumPy array.
+        beam (int):
+            The beam number.
+        time_stamp (datetime):
+            The timestamp of the profile data.
+        skip_turn (int):
+            The turn constant for skipping.
+        sample_rate (float):
+            The sample rate of the profile data.
+        jitter (np.ndarray):
+            The trigger offsets (jitter) as a NumPy array.
+    """
+    data = h5py.File(profile_file)
+
+    raw_data = np.array(data['Profile/profile'], dtype=np.int64)
+    beam = int(data['Profile/beam'][0])
+    time_stamp = data['Profile/timestamp'][0]
+    skip_turn = data['Profile/turn_constant'][0]
+    sample_rate = data['Profile/samplerate'][0]
+
+    time_stamp = datetime.fromtimestamp(time_stamp)
+
+    try:
+        jitter = data['Profile/tigger_offsets'][0]
+    except KeyError:
+        jitter = np.zeros(raw_data.shape[1])
+
+    return raw_data, beam, time_stamp, skip_turn, sample_rate, jitter

@@ -34,7 +34,7 @@ def set_profile_reference(profiles, new_reference=0, sample=25):
     return profiles
 
 
-def apply_lhc_cable_tf(profile, t, beam, extend=100e-9):
+def remove_lhc_cable_transfer_function(profile, t, beam, extend=100e-9, raised_cos_filter: bool = False):
     dir_fil = os.path.dirname(os.path.abspath(__file__)) + '/cable_transfer_functions/'
     profile = set_profile_reference(profile, new_reference=0, sample=25)
     dt = t[1] - t[0]
@@ -61,12 +61,102 @@ def apply_lhc_cable_tf(profile, t, beam, extend=100e-9):
 
     # Deconvolution
     filtered_f = np.fft.fft(profile) / TF
+
+    if raised_cos_filter:
+        cutoff_left = 2.40e9  # CTF reliable up to 2.5 GHz
+        cutoff_right = 2.50e9
+        H_RC = raised_cosine_filter(cutoff_left, cutoff_right, freq)
+
+        filtered_f = filtered_f * H_RC
+
     filtered = np.fft.ifft(filtered_f).real
     filtered -= filtered[:10].mean()
     return filtered[:init_length], t[:init_length]
 
 
-def sps_cable_tranfer_function(profile_time, profile_current, year: int = 2021):
+def apply_lhc_cable_transfer_function(
+        t,
+        profile,
+        beam: int,
+        extend: float = 100e-9,
+        debug: bool = False,
+        raised_cos_filter: bool = False):
+    r'''
+    Takes in time-array and profile-array and applies the cable tranfer function of the LHC.
+
+    code written by Danilo Quartullo
+    :param profile_time: numpy-array with time sample points
+    :param profile_current: numpy-array with profile measurement
+    :param year: int the year the TF was measured
+    :return: profile measurement with cable transfer function applied
+    '''
+
+    dir_fil = os.path.dirname(os.path.abspath(__file__)) + '/cable_transfer_functions/'
+    profile = set_profile_reference(profile, new_reference=0, sample=25)
+    dt = t[1] - t[0]
+    init_length = len(t)
+
+    # Extending the time array to improve the deconvolution
+    noints = t.shape[0]
+    t = np.arange(t.min(), t.max() + extend, dt)
+    profile = np.concatenate((profile, np.zeros(t.shape[0] - noints)))
+
+    # Recalculate the number of points and the frequency array
+    noints = t.shape[0]
+    freq = np.fft.fftfreq(noints, d=dt)
+
+    h5file = h5py.File(dir_fil + 'TF_B' + str(beam) + '.h5', 'r')
+    freq_array = np.array(h5file["/TransferFunction/freq"])
+    TF_array = np.array(h5file["/TransferFunction/TF"])
+    h5file.close()
+    TF = np.interp(freq, np.fft.fftshift(freq_array), np.fft.fftshift(TF_array.real)) + \
+         1j * np.interp(freq, np.fft.fftshift(freq_array), np.fft.fftshift(TF_array.imag))
+
+    # Remove zeros in high-frequencies
+    TF[TF == 0] = 1.0 + 0j
+
+    # Deconvolution
+    filtered_f = np.fft.fft(profile) * TF
+
+    if raised_cos_filter:
+        cutoff_left = 2.40e9  # CTF reliable up to 2.5 GHz
+        cutoff_right = 2.50e9
+        H_RC = raised_cosine_filter(cutoff_left, cutoff_right, freq)
+        _H_RF = raised_cosine_filter(-cutoff_right, -cutoff_left, freq)
+
+        filtered_f = filtered_f * H_RC * (1 - _H_RF)
+
+    if debug:
+        import matplotlib.pyplot as plt
+
+        _nrows = 2
+
+        if raised_cos_filter:
+            _nrows += 1
+
+        fig, ax = plt.subplots(nrows=_nrows, figsize=(10, 5), sharex=True)
+
+        ax[0].plot(freq / 1e9, np.abs(np.fft.fft(profile)))
+        ax[0].set_ylabel('Beam spectrum')
+
+        ax[1].plot(freq / 1e9, np.abs(TF))
+        ax[1].set_ylabel('Cable transfer function')
+
+        if raised_cos_filter:
+            ax[2].plot(freq / 1e9, np.abs(H_RC))
+            ax[2].set_ylabel('Raised cosine filter')
+
+        ax[1].set_xlim(-5, 5)
+
+        fig.tight_layout()
+        plt.show()
+
+    filtered = np.abs(np.fft.ifft(filtered_f))
+
+    return filtered[:init_length]
+
+
+def apply_sps_cable_tranfer_function(profile_time, profile_current, year: int = 2021):
     r'''
     Takes in time-array and profile-array and applies the cable tranfer function of the SPS.
 
@@ -121,7 +211,7 @@ def sps_cable_tranfer_function(profile_time, profile_current, year: int = 2021):
     return CTF_profile
 
 
-def apply_sps_cable_tf(
+def remove_sps_cable_transfer_function(
         profile,
         t,
         extend: float = 100e-9,
