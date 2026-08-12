@@ -6,20 +6,15 @@ Author: Birk Emil Karlsen-Bæck
 
 import numpy as np
 import h5py
-from blond.trackers.tracker import RingAndRFTracker
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.constants import c, e, proton_mass
 from scipy.signal import find_peaks
 
-import blond.utils.bmath as bm
-
 E_0 = proton_mass * c ** 2 / e
 synchronous_energy = lambda p_s: np.sqrt(p_s ** 2 + E_0 ** 2)
 relativistic_gamma = lambda E_s: E_s / E_0
 relativistic_beta = lambda gamma: np.sqrt(1 - 1 / gamma ** 2)
-
-from blond.beam.profile import Profile
 
 from numpy.typing import NDArray
 
@@ -244,21 +239,24 @@ class MeasuredBeamPhase:
             self.beam_phases[bunch_number, i] = np.arctan(coeff)
 
     def analyse_measurement(self, no_beam_thres: float = 20) -> NDArray:
-
         bunch_ind = 0
 
-        # Find number of rf buckets to iterate over
         n_buckets = int(self.full_time[-1] // self.rf_period)
 
-        for i in tqdm(range(n_buckets), desc="Analyzing buckets", unit="buckets", position=1, leave=False):
+        # Exact float boundaries, same as original — no drift
+        boundaries = np.arange(n_buckets + 1) * self.rf_period
 
-            mask_i = (self.full_time > i * self.rf_period) & (self.full_time < (i + 1) * self.rf_period)
+        # One vectorized binary search for ALL boundaries at once
+        edges = np.searchsorted(self.full_time, boundaries)
+
+        for i in tqdm(range(n_buckets), desc="Analyzing buckets", unit="buckets", position=1, leave=False):
+            start, stop = edges[i], edges[i + 1]
 
             # Get time
-            time_frame = self.full_time[mask_i]
+            time_frame = self.full_time[start:stop]
 
             # Get profile measurement for bucket i
-            frame_bucket = self.profile[mask_i, :]
+            frame_bucket = self.profile[start:stop, :]
 
             # Check if bucket is empty or not
             if not np.all(frame_bucket[:, 0] < no_beam_thres):
@@ -323,6 +321,26 @@ class SPSBeamPhase(MeasuredBeamPhase):
 
 
 class LHCBeamPhase(MeasuredBeamPhase):
+    """Class to measure 400 MHz bunch phases in the LHC.
+
+    Args:
+        profiles (NDArray):
+            The profile to estimate the beam phase from. The first axis is along a single turn while
+            the second axis turn-by-turn.
+        sampling (float):
+            The sampling [# samples / s] of the measurement.
+        beam_momentum (float):
+            The beam momentum [eV / c] the profile was measured at.
+        n_bunches (int):
+            The number of expected bunches.
+        jitter (NDArray):
+            A 1D array of jitter correction [s] from the scope.
+        auto_detect_rf_phase (bool):
+            Flag to enable algorthm to automatically detect the correct zero phase of the rf system
+            relative to the profile measurement. The ``sample_correction`` will be a correction
+            on top of what the algorithm finds.
+
+    """
 
     def __init__(
             self,
@@ -335,13 +353,14 @@ class LHCBeamPhase(MeasuredBeamPhase):
             auto_detect_rf_phase: bool = False
         ):
         super().__init__(
-            profiles, sampling, beam_momentum, n_bunches, time_shift, jitter,
+            profiles=profiles, sampling=sampling, beam_momentum=beam_momentum, 
+            n_bunches=n_bunches, sample_correction=time_shift, jitter=jitter,
             alpha=0, C=26658.883, h=35640, phi_rf=0,
             auto_detect_rf_phase=auto_detect_rf_phase
         )
 
 
-class SimulatedBeamPhase:
+class SimulatedBeamPhaseB2:
     """Class to analyze the beam phase turn by turn in BLonD simulations.
 
     Args:
@@ -358,7 +377,7 @@ class SimulatedBeamPhase:
             and will therefore be the same value as n_bunches.
     """
 
-    def __init__(self, profile: Profile, rf_tracker: RingAndRFTracker,
+    def __init__(self, profile, rf_tracker,
                  n_bunches: int = 1, n_bunches_init: int = None) -> None:
 
         self.profile = profile
@@ -379,7 +398,7 @@ class SimulatedBeamPhase:
         """
         self.n_bunches_current = new_number_of_bunches
 
-    def extract_phases(self, no_beam_thres: float = 0.5) -> NDArray[float]:
+    def extract_phases(self, no_beam_thres: float = 0.5) -> NDArray:
         """Method to extract the beam phases from the BLonD profile object associated with the instance of
         this class.
 
@@ -407,23 +426,22 @@ class SimulatedBeamPhase:
 
         # Compute the rf period and time shifts
         rf_period = 2 * np.pi / omega_rf
-        time_shift = (int(time_frame[0] * omega_rf / (2 * np.pi)) + 1)
         bunch_ind = 0
 
-        # Pre-compute bucket centers
-        bucket_centers = self.rf_tracker.rf_params.bucket_center(np.arange(n_buckets) + time_shift)
+        # Exact float boundaries, same as original — no drift
+        boundaries = np.arange(n_buckets + 1) * rf_period
 
-            # Create masks for all buckets
-        left_sides = bucket_centers - rf_period / 2
-        right_sides = bucket_centers + rf_period / 2
-        masks = [(time_frame > left) & (time_frame < right) for left, right in zip(left_sides, right_sides)]
+        # One vectorized binary search for ALL boundaries at once
+        edges = np.searchsorted(time_frame, boundaries)
         
-        for mask in masks:
+        for i in range(n_buckets):
+            start, stop = edges[i], edges[i + 1]
+
             # Get time coordinates of bucket
-            time_bucket = time_frame[mask]
+            time_bucket = time_frame[start:stop]
 
             # Get profile measurement for bucket i
-            frame_bucket = normalized_profile[mask]
+            frame_bucket = normalized_profile[start:stop]
 
             # Check if there is beam in the bucket
             if np.sum(frame_bucket) > no_beam_thres:
@@ -436,7 +454,7 @@ class SimulatedBeamPhase:
         return self.bunch_phases * 180 / np.pi
 
     @staticmethod
-    def analyse_bunch(single_profile: NDArray[float], time_array: NDArray[float], omega_rf: float,
+    def analyse_bunch(single_profile: NDArray, time_array: NDArray, omega_rf: float,
                       phi_rf: float, bin_size: float) -> float:
         """Method to compute the beam phase.
 
@@ -456,6 +474,139 @@ class SimulatedBeamPhase:
             phase (float):
                 The beam phase in radians.
         """
+        try:
+            import blond.utils.bmath as bm
+        except:
+            from blond import backend
+            bm = backend.specials
+
+        coeff = bm.beam_phase(
+            time_array, single_profile,
+            0, omega_rf, phi_rf, bin_size
+        )
+
+        return np.arctan(coeff)
+
+
+class SimulatedBeamPhaseB3:
+    """Class to analyze the beam phase turn by turn in BLonD simulations.
+
+    Args:
+        profile (Profile):
+            BLonD profile object with the beam information.
+        rf_tracker (RingAndRFTracker):
+            BLonD ring and rf tracker with the RF phase and frequency information.
+        n_bunches (int):
+            The total number of bunches in the ring and which are covered by the profile object.
+            Default value is 1 bunch.
+        n_bunches_init (int):
+            In the case of a changing number of bunches during the simulation due to injections,
+            you can specify the initial number of bunches in your simulation. The variable is None by the default
+            and will therefore be the same value as n_bunches.
+    """
+
+    def __init__(self, profile, rfstation,
+                 n_bunches: int = 1, n_bunches_init: int = None) -> None:
+
+        self.profile = profile
+        self.rfstation = rfstation
+        self.n_bunches = n_bunches
+
+        if n_bunches_init is None:
+            self.n_bunches_current = self.n_bunches
+
+        self.bunch_phases = np.zeros(n_bunches)
+
+    def set_number_of_bunches(self, new_number_of_bunches: int) -> None:
+        """Method to update the number of bunches in the simuation.
+
+        Args:
+            new_number_of_bunches (int):
+                The new number of bunches in the ring.
+        """
+        self.n_bunches_current = new_number_of_bunches
+
+    def extract_phases(self, no_beam_thres: float = 0.5) -> NDArray:
+        """Method to extract the beam phases from the BLonD profile object associated with the instance of
+        this class.
+
+        Args:
+            no_beam_thres (float):
+                The threshold for which to consider an rf bucket empty. The threshold is a fraction of the average
+                bunch intensity in the simulation.
+
+        Returns:
+            bunch_phases
+        """
+
+        # Loading all the parameters from the BLonD simulation
+        omega_rf = self.rfstation.get_main_harmonic_omega_rf()
+        phi_rf = self.rfstation.get_main_harmonic_phi_rf()
+        time_frame = self.profile.hist_x
+
+        # Normalize the beam line density to unity intensity
+        normalized_profile = (np.copy(self.profile.hist_y)
+                              / np.sum(self.profile.hist_y) * self.n_bunches_current)
+
+        # Compute the total number of buckets to iterate over
+        n_buckets = int((self.profile.hist_x[-1] - self.profile.hist_x[0])
+                        * omega_rf / (2 * np.pi))
+
+        # Compute the rf period and time shifts
+        rf_period = 2 * np.pi / omega_rf
+        bunch_ind = 0
+
+        # Exact float boundaries, same as original — no drift
+        boundaries = np.arange(n_buckets + 1) * rf_period
+
+        # One vectorized binary search for ALL boundaries at once
+        edges = np.searchsorted(time_frame, boundaries)
+
+        for i in range(n_buckets):
+            start, stop = edges[i], edges[i + 1]
+
+            # Get time coordinates of bucket
+            time_bucket = time_frame[start:stop]
+
+            # Get profile measurement for bucket i
+            frame_bucket = normalized_profile[start:stop]
+
+            # Check if there is beam in the bucket
+            if np.sum(frame_bucket) > no_beam_thres:
+                self.bunch_phases[bunch_ind] = self.analyse_bunch(
+                    frame_bucket, time_bucket, omega_rf, phi_rf,
+                    self.profile.hist_step
+                )
+                bunch_ind += 1
+
+        return self.bunch_phases * 180 / np.pi
+
+    @staticmethod
+    def analyse_bunch(single_profile: NDArray, time_array: NDArray, omega_rf: float,
+                      phi_rf: float, bin_size: float) -> float:
+        """Method to compute the beam phase.
+
+        Args:
+            single_profile (NDArray[float]):
+                Array for the line density coordinate.
+            time_array (NDArray[float]):
+                Array for the time coordinate for the line density.
+            omega_rf (float):
+                The RF angular frequency in radians per second.
+            phi_rf (float):
+                The RF phase in radians.
+            bin_size (float):
+                The size of the line density bins in seconds.
+
+        Returns:
+            phase (float):
+                The beam phase in radians.
+        """
+        try:
+            import blond.utils.bmath as bm
+        except:
+            from blond import backend
+            bm = backend.specials
 
         coeff = bm.beam_phase(
             time_array, single_profile,
